@@ -1141,7 +1141,8 @@ static void handleMeshEnable(void *Args)
         }
 
         if (success) {
-            MeshInfo("Meshwifi has been %s\n",(enable?"enabled":"disabled"));
+            //MeshInfo("Meshwifi has been %s\n",(enable?"enabled":"disabled"));
+            MeshInfo("MESH_STATUS:%s\n",(enable?"enabled":"disabled"));
 
             PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
             // Update the data model
