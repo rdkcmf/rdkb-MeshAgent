@@ -37,6 +37,8 @@
 extern int sysevent_fd_gs;
 extern token_t sysevent_token_gs;
 
+const char *svcagt_systemctl_cmd = "systemctl";
+
 /**************************************************************************/
 /*! \fn static STATUS Mesh_SyseventGetInt
  **************************************************************************
@@ -223,5 +225,49 @@ int Mesh_SysCfgSetStr(const char *name, unsigned char *str_value, bool toArm)
 #endif
    return retval;
 }
+
+// Invoke systemctl to get the running/stopped state of a service
+int svcagt_get_service_state (const char *svc_name)
+{
+	int exit_code;
+	bool running;
+	char cmdbuf[128];
+
+	sprintf (cmdbuf, "%s is-active %s.service", svcagt_systemctl_cmd, svc_name);
+	exit_code = system (cmdbuf);
+	if (exit_code == -1) {
+		CcspTraceError(("Error invoking systemctl command, errno: %s\n", strerror(errno)));
+		return -1;
+	}
+	running = (exit_code == 0);
+	return running;
+}
+
+// Invoke systemctl to start or stop a service
+int svcagt_set_service_state (const char *svc_name, bool state)
+{
+	int exit_code = 0;
+	char cmdbuf[128];
+	const char *start_stop_msg;
+	const char *cmd_option;
+
+	if (state) {
+		start_stop_msg = "Starting";
+		cmd_option = "start";
+	} else {
+		start_stop_msg = "Stopping";
+		cmd_option = "stop";
+	}
+
+	MeshInfo(("%s %s\n", start_stop_msg, svc_name));
+	sprintf (cmdbuf, "%s %s %s.service", 
+		svcagt_systemctl_cmd, cmd_option, svc_name); 
+	exit_code = system (cmdbuf);
+	if (exit_code != 0)
+		CcspTraceError(("Command %s failed with exit %d, errno %s\n",
+			cmdbuf, exit_code, strerror(errno)));
+	return exit_code;
+}
+
 
 #endif // _RDKB_MESH_UTILS_C_

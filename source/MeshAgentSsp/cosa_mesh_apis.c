@@ -39,7 +39,6 @@
 #include <pthread.h>
 #include <syscfg/syscfg.h>
 #include <sysevent/sysevent.h>
-#include <service-agent-c/svcagt_systemctl.h>
 
 #include <fcntl.h>
 

@@ -27,5 +27,5 @@ hardware_platform = i686-linux-gnu
 lib_LTLIBRARIES = libMeshAgentSsp.la
 libMeshAgentSsp_la_CPPFLAGS = -I$(top_srcdir)/source/MeshAgentCore -I$(top_srcdir)/source/MeshAgentSsp -I$(top_srcdir)/source/include $(CPPFLAGS)
 libMeshAgentSsp_la_SOURCES = ssp_messagebus_interface.c ssp_main.c ssp_action.c plugin_main.c cosa_meshagent_internal.c cosa_meshagent_dml.c cosa_apis_util.c cosa_mesh_apis.c mesh_client_table.c
-libMeshAgentSsp_la_LDFLAGS = -lccsp_common -ldl -rdynamic $(SYSTEMD_LDFLAGS) -lutapi -lutctx -lulog -lpthread -lz -lrt -lsvc_agt
+libMeshAgentSsp_la_LDFLAGS = -lccsp_common -ldl -rdynamic $(SYSTEMD_LDFLAGS) -lutapi -lutctx -lulog -lpthread -lz -lrt
 

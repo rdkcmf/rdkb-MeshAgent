@@ -36,5 +36,7 @@ int Mesh_SysCfgSetInt(const char *name, int int_value);
 int Mesh_SysCfgGetStr(const char *name, unsigned char *out_value, int outbufsz);
 int Mesh_SysCfgSetStr(const char *name, unsigned char *str_value, bool toArm);
 
+int svcagt_get_service_state (const char *svc_name);
+int svcagt_set_service_state (const char *svc_name, bool state);
 
 #endif /* MESHAGENT_SOURCE_MESHAGENT_MESHUTILS_H_ */
