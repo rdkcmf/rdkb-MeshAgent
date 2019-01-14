@@ -1064,6 +1064,47 @@ BOOL is_SSID_enabled()
     free_parameterValStruct_t(bus_handle, valNum, valStructs);
     return ret_b;
 }
+
+BOOL radio_check()
+{
+    int ret = ANSC_STATUS_FAILURE;
+    parameterValStruct_t    **valStructs = NULL;
+    char dstComponent[64]="eRT.com.cisco.spvtg.ccsp.wifi";
+    char dstPath[64]="/com/cisco/spvtg/ccsp/wifi";
+    const char Radio1[]="Device.WiFi.Radio.1.Enable";
+    const char Radio2[]="Device.WiFi.Radio.2.Enable";
+    char *paramNames[]={Radio1,Radio2};
+    int  valNum = 0;
+    BOOL ret_b=FALSE;
+
+    ret = CcspBaseIf_getParameterValues(
+            bus_handle,
+            dstComponent,
+            dstPath,
+            paramNames,
+            2,
+            &valNum,
+            &valStructs);
+
+    if(CCSP_Message_Bus_OK != ret){
+         CcspTraceError(("%s CcspBaseIf_getParameterValues %s error %d\n", __FUNCTION__,paramNames[0],ret));
+         free_parameterValStruct_t(bus_handle, valNum, valStructs);
+         return FALSE;
+    }
+
+
+    if(valStructs && ((strncmp("false", valStructs[0]->parameterValue,5)==0) || (strncmp("false", valStructs[1]->parameterValue,5)==0)))
+        MeshError("Radio Error: Status 2.4= %s 5= %s \n", valStructs[0]->parameterValue, valStructs[1]->parameterValue);
+    else
+         ret_b=(valStructs?true:false);
+
+    if(valStructs)
+     MeshWarning("valStructs[0]->parameterValue = %s valStructs[1]->parameterValue = %s \n",valStructs[0]->parameterValue,valStructs[1]->parameterValue);
+
+    free_parameterValStruct_t(bus_handle, valNum, valStructs);
+    return ret_b;
+}
+
 void meshSetSyscfg(bool enable)
 {
     int i =0;
@@ -1094,6 +1135,12 @@ static void handleMeshEnable(void *Args)
 	 if (enable) {
             // This will only work if this service is started *AFTER* CcspWifi
             // If the service is not running, start it
+            if(!radio_check())
+            {
+              MeshError(("MESH_ERROR:Fail to enable Mesh because either one of the radios are off\n"));
+              meshSetSyscfg(0);
+              return FALSE;
+            }
 	    if(is_band_steering_enabled()) {
                    if(set_wifi_boolean_enable("Device.WiFi.X_RDKCENTRAL-COM_BandSteering.Enable", "false")==FALSE) {
                         MeshError(("MESH_ERROR:Fail to enable Mesh because fail to turn off Band Steering\n"));
