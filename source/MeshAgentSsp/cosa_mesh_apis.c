@@ -97,6 +97,10 @@ const char meshDevFile[] = "/nvram/mesh-dev.flag";
 #define _DEBUG 1
 const int THREAD_NAME_LEN=16; //length is restricted to 16 characters, including the terminating null byte
 
+//Prash 
+static int dnsmasqFd;
+static struct sockaddr_in dnsserverAddr;
+
 extern COSA_DATAMODEL_MESHAGENT* g_pMeshAgent;
 
 // Mesh Status structure
@@ -126,14 +130,6 @@ MeshState_item meshStateArr[] = {
     {MESH_STATE_WIFI_RESET,"Reset"}
 };
 
-// MeshSync Message structure.
-typedef struct
-{
-    eMeshSyncType mType;       // Enum value of the mesh sync msg
-    char         *msgStr;      // mesh sync message string
-    char         *sysStr; // sysevent string
-} MeshSync_MsgItem;
-
 // This Array should have MESH_SYNC_MSG_TOTAL-1 entries
 MeshSync_MsgItem meshSyncMsgArr[] = {
     {MESH_WIFI_RESET,                       "MESH_WIFI_RESET",                      "wifi_init"},
@@ -158,7 +154,9 @@ MeshSync_MsgItem meshSyncMsgArr[] = {
     {MESH_DHCP_ADD_LEASE,                   "MESH_DHCP_ADD_LEASE",                  "lease_add"},
     {MESH_DHCP_REMOVE_LEASE,                "MESH_DHCP_REMOVE_LEASE",               "lease_remove"},
     {MESH_DHCP_UPDATE_LEASE,                "MESH_DHCP_UPDATE_LEASE",               "lease_update"},
-    {MESH_WIFI_RADIO_CHANNEL_BW,            "MESH_WIFI_RADIO_CHANNEL_BW",           "channel_update"}};
+    {MESH_WIFI_RADIO_CHANNEL_BW,            "MESH_WIFI_RADIO_CHANNEL_BW",           "channel_update"},
+    {MESH_ETHERNET_MAC_LIST,                "MESH_ETHERNET_MAC_LIST",               "process_eth_mac"},
+    {MESH_RFC_UPDATE,                       "MESH_RFC_UPDATE",                      "ethbhaul_enable"}};
 typedef struct
 {
     eMeshIfaceType  mType;
@@ -230,6 +228,63 @@ eMeshWifiStatusType Mesh_WifiStatusLookup(char *status)
     }
 
     return ret;
+}
+
+int Mesh_DnsmasqSock(void)
+{
+ if(!dnsmasqFd)
+ {
+  FILE *cmd;
+  char armIP[32];
+  cmd = popen("grep \"ARM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
+  if(cmd == NULL) {
+       return 0;
+   }
+  fgets(armIP, sizeof(armIP), cmd);
+  pclose(cmd);
+  dnsmasqFd = socket(PF_INET, SOCK_DGRAM, 0);
+  if( dnsmasqFd < 0)
+    return 0;
+  dnsserverAddr.sin_family = AF_INET;
+  dnsserverAddr.sin_port = htons(47030);
+  dnsserverAddr.sin_addr.s_addr = inet_addr(armIP);
+  memset(dnsserverAddr.sin_zero, '\0', sizeof dnsserverAddr.sin_zero);
+  MeshInfo("Created dnsmasq socket for Eth Bhaul mac update\n");
+ }
+ return 1;
+}
+//Prash
+/**
+ *  @brief MeshAgent Process Send Pod mac to dnsmasq for filtering
+ *
+ *  This function will send Pod mac addr
+ *  to dnsmasq for the purpose of Vendor ID filtering
+ *  when Pod connected via ethernet
+ */
+void Mesh_SendEthernetMac(char *mac)
+{
+ if(Mesh_DnsmasqSock())
+ {
+  PodMacNotify msg = {0};
+  PodMacNotify *sendBuff;
+ 
+  sendBuff = &msg;
+  msg.msgType = g_pMeshAgent->PodEthernetBackhaulEnable ?  START_POD_FILTER : STOP_POD_FILTER;
+  strncpy(msg.mac, mac, MAX_MAC_ADDR_LEN); 
+
+  if(dnsmasqFd) { 
+   sendto(dnsmasqFd, (const char*)sendBuff, sizeof(LeaseNotify), 0, (struct sockaddr *)&dnsserverAddr, (sizeof dnsserverAddr));
+   MeshInfo("Pod mac address sent to dnsmasq MAC: %s\n", mac);
+  } else
+   MeshError("Error sending Pod mac address to dnsmasq, Socket not ready MAC: %s\n", mac);
+  
+  close(dnsmasqFd);
+  dnsmasqFd=0;
+ }
+ else {
+    MeshError("Socket failed in %s\n", __FUNCTION__);
+ }
+  return 1;
 }
 
 /**
@@ -372,6 +427,14 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
         changeChBandwidth(rxMsg.data.wifiRadioChannelBw.index, rxMsg.data.wifiRadioChannelBw.bw);
     }
     break;
+    case MESH_ETHERNET_MAC_LIST:
+    {
+      if( g_pMeshAgent->PodEthernetBackhaulEnable)
+       Mesh_SendEthernetMac(rxMsg.data.ethMac.mac);
+      else
+       MeshInfo("Ethernet bhaul disabled, ignoring the Pod mac update\n");
+    } 
+    break;
     // the rest of these messages will not come from the Mesh vendor
     case MESH_SUBNET_CHANGE:
     case MESH_URL_CHANGE:
@@ -399,6 +462,7 @@ static int leaseServer(void *data)
    struct sockaddr_storage serverStorage;
    socklen_t addr_size;
    char atomIP[32];
+   int msgType = 0;
    FILE *cmd;
 
    cmd = popen("grep \"ATOM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
@@ -419,12 +483,18 @@ static int leaseServer(void *data)
    bind(Socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
 
    addr_size = sizeof serverStorage;
-
+   
    while(1) {
     
      nBytes = recvfrom(Socket,(char *)&rxBuf,sizeof(LeaseNotify),0,(struct sockaddr *)&serverStorage, &addr_size);
-     if(clientSocketsMask)
-      Mesh_sendDhcpLeaseUpdate((int)ntohl(rxBuf.msgType), rxBuf.lease.mac, rxBuf.lease.ipaddr, rxBuf.lease.hostname, rxBuf.lease.fingerprint);
+     msgType = (int)ntohl(rxBuf.msgType);
+     if(clientSocketsMask && msgType > POD_ETH_PORT)
+      Mesh_sendDhcpLeaseUpdate( msgType, rxBuf.lease.mac, rxBuf.lease.ipaddr, rxBuf.lease.hostname, rxBuf.lease.fingerprint);
+     else if( msgType == POD_XHS_PORT)
+      MeshWarning("Pod is connected on XHS ethernet Port, Unplug and plug in to different one\n");
+     else if( msgType == POD_ETH_PORT)
+      MeshWarning("Pod is non operational on ethernet port while Ethernet bhaul feature is not enabled\n");
+     
    }
    return 0;
 }
@@ -890,7 +960,7 @@ bool Mesh_SetMeshState(eMeshStateType state, bool init, bool commit)
  *
  * This function will return whther or not the mesh service is enabled
  */
-bool Mesh_GetEnabled()
+bool Mesh_GetEnabled(const char *name)
 {
     unsigned char out_val[128];
     int outbufsz = sizeof(out_val);
@@ -899,7 +969,7 @@ bool Mesh_GetEnabled()
     // MeshInfo("Entering into %s\n",__FUNCTION__);
 
     out_val[0]='\0';
-    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, out_val, outbufsz) == 0)
+    if(Mesh_SysCfgGetStr(name, out_val, outbufsz) == 0)
     {
         if (strcmp(out_val, "true") == 0)
         {
@@ -1196,6 +1266,26 @@ BOOL is_bridge_mode_enabled()
 
 }
 
+void meshSetEthbhaulSyscfg(bool enable)
+{
+    int i =0;
+
+    MeshInfo("%s Setting eth bhaul enable in syscfg to %d\n", __FUNCTION__, enable);
+    if(Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr, (enable?"true":"false"), true) != 0) {
+         MeshInfo("Failed to set the Eth Bhaul Enable in syscfg, retrying 5 times\n");
+         for(i=0; i<5; i++) {
+         if(!Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr, (enable?"true":"false"), true)) {
+           MeshInfo("eth bhaul syscfg set passed in %d attempt\n", i+1);
+           break;
+         }
+         else
+          MeshInfo("eth bhaul syscfg set retrial failed in %d attempt\n", i+1);
+      }
+   }
+   else
+    MeshInfo("eth bhaul enable set in the syscfg successfully\n");
+}
+
 void meshSetSyscfg(bool enable)
 {
     int i =0;
@@ -1230,6 +1320,27 @@ void meshSetSyscfg(bool enable)
    else
     MeshError("Failed to remove Mesh Flag from persistent memory\n");
   }
+}
+
+/**
+ * @brief Mesh Agent EthBhaul Set Enable/Disable
+ *
+ * This function will enable/disable the Mesh Pod ethernet backhaul feature enable/disable
+ */
+bool Mesh_SetMeshEthBhaul(bool enable, bool init)
+{
+    // If the enable value is different or this is during setup - make it happen.
+    if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr) != enable)
+    {
+        meshSetEthbhaulSyscfg(enable);
+        g_pMeshAgent->PodEthernetBackhaulEnable = enable;
+        //Send this as an RFC update to plume manager
+        Mesh_sendRFCUpdate("PodEthernetBackhaul.Enable", enable ? "true" : "false", rfc_boolean);
+    // If ethernet bhaul is disabled, send msg to dnsmasq informing same with a dummy mac    
+        if(!enable) 
+          Mesh_SendEthernetMac("00:00:00:00:00:00");
+    }
+    return TRUE;
 }
 static void handleMeshEnable(void *Args)
 {
@@ -1311,6 +1422,7 @@ static void handleMeshEnable(void *Args)
         }
    return NULL;
 }
+
 /**
  * @brief Mesh Agent Set Enable/Disable
  *
@@ -1322,7 +1434,7 @@ bool Mesh_SetEnabled(bool enable, bool init)
     bool success = TRUE;
 
     // If the enable value is different or this is during setup - make it happen.
-    if (init || Mesh_GetEnabled() != enable)
+    if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) != enable)
     {
         meshSetSyscfg(enable);
  	pthread_t tid;
@@ -1527,6 +1639,25 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
             Mesh_Recovery();
         }
     }
+   
+    out_val[0]='\0'; 
+    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr, out_val, outbufsz) != 0)
+    {
+        MeshInfo("Syscfg error, Setting Ethbhaul mode to default\n");
+        Mesh_SetMeshEthBhaul(true,true);
+    } else {
+       if (strncmp(out_val, "true", 4) == 0) {
+           MeshInfo("Setting initial ethbhaul mode to true\n");
+           Mesh_SetMeshEthBhaul(true,true);
+       } else if (strncmp(out_val, "false", 5) == 0) {
+           MeshInfo("Setting initial ethbhaul mode to false\n");
+           Mesh_SetMeshEthBhaul(false,true);
+       }
+       else {
+        MeshInfo("Ethernet Bhaul status error from syscfg , setting default\n");
+        Mesh_SetMeshEthBhaul(true,true);
+      }
+    }
     // MeshInfo("Exiting from %s\n",__FUNCTION__);
 }
 
@@ -1577,6 +1708,26 @@ bool Mesh_UpdateConnectedDevice(char *mac, char *iface, char *host, char *status
 
     return true;
 }
+
+/**
+ * @brief Mesh Agent Send RFC parameter to plume managers
+ *
+ * This function will notify plume agent about RFC changes
+ */ 
+void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type)
+{   
+    // send out notification to plume
+    MeshSync mMsg = {0};
+    // Notify plume
+    // Set sync message type
+    mMsg.msgType = MESH_RFC_UPDATE;
+    strncpy(mMsg.data.rfcUpdate.paramname, param, sizeof(mMsg.data.rfcUpdate.paramname)-1);
+    strncpy(mMsg.data.rfcUpdate.paramval, val, sizeof(mMsg.data.rfcUpdate.paramval)-1);
+    mMsg.data.rfcUpdate.type = type;
+    MeshInfo("RFC_UPDATE: param: %s val:%s type=%d\n",mMsg.data.rfcUpdate.paramname, mMsg.data.rfcUpdate.paramval, mMsg.data.rfcUpdate.type);
+    msgQSend(&mMsg);
+    return true;
+} 
 
 /**
  * @brief Mesh Agent Sync DHCP lease

@@ -164,8 +164,14 @@ MeshAgent_GetParamBoolValue
         *pBool = g_pMeshAgent->meshEnable;
         return TRUE;
     }
-
-    MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    else if( AnscEqualString(ParamName, "PodEthernetBackhaulEnable", TRUE))
+    {
+     MeshInfo("Pod ethernet bhaul mode get\n");
+     *pBool = g_pMeshAgent->PodEthernetBackhaulEnable;
+     return TRUE; 
+    }
+    else
+     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
     return FALSE;
 }
 
@@ -374,8 +380,14 @@ MeshAgent_SetParamBoolValue
         Mesh_SetEnabled(bValue, false);
         return TRUE;
     }
-
-    MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    else if( AnscEqualString(ParamName, "PodEthernetBackhaulEnable", TRUE))
+    {
+     MeshInfo("Pod ethernet bhaul mode set\n");
+     Mesh_SetMeshEthBhaul(bValue,false);
+     return TRUE; 
+    }
+    else
+     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
     return FALSE;
 }
 
@@ -647,7 +659,7 @@ MeshAgent_Rollback
     // reset url
     Mesh_GetUrl((char *)pMyObject->meshUrl, sizeof(pMyObject->meshUrl));
     pMyObject->meshState = Mesh_GetMeshState();
-    pMyObject->meshEnable = Mesh_GetEnabled();
+    pMyObject->meshEnable = Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr);
 
     return 0;
 }

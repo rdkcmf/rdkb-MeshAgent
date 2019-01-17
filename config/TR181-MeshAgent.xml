@@ -80,6 +80,12 @@
                   <syntax>string</syntax>
                   <writable>true</writable>
                 </parameter>
+                <parameter>
+                  <name>PodEthernetBackhaulEnable</name>
+                  <type>boolean</type>
+                  <syntax>bool</syntax>
+                  <writable>true</writable>
+                </parameter>
               </parameters>
             </object>
           </objects>

@@ -60,6 +60,7 @@ const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 static mqd_t qd_server; // msg queue server handle
 #endif
 
+extern MeshSync_MsgItem meshSyncMsgArr[];
 const int THREAD_NAME_LEN=16; //length is restricted to 16 characters, including the terminating null byte
 
 static pthread_t mq_server_tid; // server thread id
@@ -74,33 +75,6 @@ typedef struct
     char         *msgStr;      // mesh sync message string
     char         *sysStr; // sysevent string
 } MeshSync_MsgItem;
-
-// This Array should have MESH_SYNC_MSG_TOTAL-1 entries
-MeshSync_MsgItem meshSyncMsgArr[] = {
-    {MESH_WIFI_RESET,                       "MESH_WIFI_RESET",                      "wifi_init"},
-    {MESH_WIFI_RADIO_CHANNEL,               "MESH_WIFI_RADIO_CHANNEL",              "wifi_RadioChannel"},
-    {MESH_WIFI_RADIO_CHANNEL_MODE,          "MESH_WIFI_RADIO_CHANNEL_MODE",         "wifi_RadioChannelMode"},
-    {MESH_WIFI_SSID_NAME,                   "MESH_WIFI_SSID_NAME",                  "wifi_SSIDName"},
-    {MESH_WIFI_SSID_ADVERTISE,              "MESH_WIFI_SSID_ADVERTISE",             "wifi_SSIDAdvertisementEnable"},
-    {MESH_WIFI_AP_SECURITY,                 "MESH_WIFI_AP_SECURITY",                "wifi_ApSecurity"},
-    {MESH_WIFI_AP_KICK_ASSOC_DEVICE,        "MESH_WIFI_AP_KICK_ASSOC_DEVICE",       "wifi_kickApAssociatedDevice"},
-    {MESH_WIFI_AP_KICK_ALL_ASSOC_DEVICES,   "MESH_WIFI_AP_KICK_ALL_ASSOC_DEVICES",  "wifi_kickAllApAssociatedDevice"},
-    {MESH_WIFI_AP_ADD_ACL_DEVICE,           "MESH_WIFI_AP_ADD_ACL_DEVICE",          "wifi_addApAclDevice"},
-    {MESH_WIFI_AP_DEL_ACL_DEVICE,           "MESH_WIFI_AP_DEL_ACL_DEVICE",          "wifi_delApAclDevice"},
-    {MESH_WIFI_MAC_ADDR_CONTROL_MODE,       "MESH_WIFI_MAC_ADDR_CONTROL_MODE",      "wifi_MacAddressControlMode"},
-    {MESH_SUBNET_CHANGE,                    "MESH_SUBNET_CHANGE",                   "subnet_change"},
-    {MESH_URL_CHANGE,                       "MESH_URL_CHANGE",                      "mesh_url"},
-    {MESH_WIFI_STATUS,                      "MESH_WIFI_STATUS",                     "mesh_status"},
-    {MESH_WIFI_ENABLE,                      "MESH_WIFI_ENABLE",                     "mesh_enable"},
-    {MESH_STATE_CHANGE,                     "MESH_STATE_CHANGE",                    "mesh_state"},
-    {MESH_WIFI_TXRATE,                      "MESH_WIFI_TXRATE",                     "wifi_TxRate"},
-    {MESH_CLIENT_CONNECT,                   "MESH_CLIENT_CONNECT",                  "client_connect"},
-    {MESH_DHCP_RESYNC_LEASES,               "MESH_DHCP_RESYNC_LEASES",              "lease_resync"},
-    {MESH_DHCP_ADD_LEASE,                   "MESH_DHCP_ADD_LEASE",                  "lease_add"},
-    {MESH_DHCP_REMOVE_LEASE,                "MESH_DHCP_REMOVE_LEASE",               "lease_remove"},
-    {MESH_DHCP_UPDATE_LEASE,                "MESH_DHCP_UPDATE_LEASE",               "lease_update"},
-    {MESH_WIFI_RADIO_CHANNEL_BW,            "MESH_WIFI_RADIO_CHANNEL_BW",           "channel_update"}};
-
 
 /**
  * Canned test messages to send to MeshAgent/RDKB
