@@ -22,7 +22,7 @@
 
 
 #include "slap_definitions.h"
-
+#include "meshsync_msgs.h"
 
 ANSC_STATUS
 CosaDmlServiceManagerInit
@@ -116,6 +116,6 @@ MeshAgent_Rollback
         ANSC_HANDLE                 hInsContext
     );
 
-
+extern MeshSync_MsgItem meshSyncMsgArr[];
 #endif //_COSA_MESHAGENT_DML_H
 

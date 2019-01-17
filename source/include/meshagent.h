@@ -37,6 +37,11 @@
 #define MeshDebug(...)                   _MESHAGENT_LOG(MESHAGENT_LOG_DEBUG, __VA_ARGS__)
 
 
+typedef enum {
+  POD_XHS_PORT=0,
+  POD_ETH_PORT
+} detectionMsg;
+
 /**
  * @brief Initializes the Message Bus and registers component with the stack.
  *
@@ -91,7 +96,7 @@ bool Mesh_SetMeshState(eMeshStateType state, bool init, bool commit);
  *
  * This function will enable/disable the Mesh service
  */
-bool Mesh_GetEnabled();
+bool Mesh_GetEnabled(const char *name);
 
 /**
  * @brief Mesh Agent Update Connected Device

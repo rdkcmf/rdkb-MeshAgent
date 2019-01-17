@@ -30,6 +30,7 @@ typedef  struct
 _COSA_DATAMODEL_MESHAGENT
 {
     BOOL                        meshEnable;
+    BOOL                        PodEthernetBackhaulEnable;
     UCHAR                       meshUrl[256];
     eMeshWifiStatusType         meshStatus;
     eMeshStateType              meshState;

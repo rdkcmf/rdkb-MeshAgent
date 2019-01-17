@@ -38,6 +38,7 @@
 #define MAX_CHANNEL_MODE_LEN 32
 #define MAX_MAC_ADDR_LEN     18
 #define MAX_HOSTNAME_LEN     256
+#define MAX_RFC_PARAM_NAME   256
 
 #if defined(ENABLE_MESH_SOCKETS)
 /**************************************************************************/
@@ -56,6 +57,7 @@
 /**************************************************************************/
 /*      Mesh sync message types                                         */
 /**************************************************************************/
+
 typedef enum {
     MESH_WIFI_RESET,
     MESH_WIFI_RADIO_CHANNEL,
@@ -80,8 +82,34 @@ typedef enum {
     MESH_DHCP_REMOVE_LEASE,
     MESH_DHCP_UPDATE_LEASE,
     MESH_WIFI_RADIO_CHANNEL_BW,
+    MESH_ETHERNET_MAC_LIST,
+    MESH_RFC_UPDATE,
     MESH_SYNC_MSG_TOTAL
 } eMeshSyncType;
+
+// MeshSync Message structure.      
+typedef struct                      
+{       
+    eMeshSyncType mType;       // Enum value of the mesh sync msg
+    char         *msgStr;      // mesh sync message string
+    char         *sysStr; // sysevent string
+} MeshSync_MsgItem;
+
+// RFC parameter type
+typedef enum {
+    rfc_string = 0,
+    rfc_int,
+    rfc_unsignedInt,
+    rfc_boolean,
+    rfc_dateTime,
+    rfc_base64,
+    rfc_long,
+    rfc_unsignedLong,
+    rfc_float,
+    rfc_double,
+    rfc_byte,
+    rfc_none,
+} eRfcType;
 
 /**
  * Mesh States
@@ -229,6 +257,13 @@ typedef struct _MeshUrlChange {
 } MeshUrlChange;
 
 /**
+ * Mesh Sync msg for ethernet mac filter of pod
+ */
+typedef struct _MeshEthernetMac {
+    char mac[MAX_MAC_ADDR_LEN];  // mac //Prash
+} MeshEthMac;
+
+/**
  * Mesh Network Status message
  */
 typedef struct _MeshWifiStatus {
@@ -272,6 +307,15 @@ typedef struct _MeshWifiDhcpLease {
 } MeshWifiDhcpLease;
 
 /**
+ * RFC update message structure - to be sent to plume
+ */
+typedef struct _MeshRFCUpdate {
+    char        paramname[MAX_RFC_PARAM_NAME];
+    char        paramval[MAX_RFC_PARAM_NAME];
+    eRfcType    type;
+} MeshRFCUpdate;
+
+/**
  * Channel Bandwidth change notification
  */
 typedef struct _MeshWifiRadioChannelBw {
@@ -305,6 +349,8 @@ typedef struct _MeshSync {
         MeshClientConnect               meshConnect;
         MeshWifiDhcpLease               meshLease;
         MeshWifiRadioChannelBw          wifiRadioChannelBw; 
+        MeshEthMac			ethMac;
+        MeshRFCUpdate			rfcUpdate; 
     } data;
 } MeshSync;
 
@@ -312,5 +358,16 @@ typedef struct _LeaseNotify {
     MeshWifiDhcpLease        lease;
     eMeshSyncType msgType;
 } LeaseNotify;
+
+//Ethernet bhaul notify msg to dnsmasq
+typedef enum {
+    STOP_POD_FILTER = 0,
+    START_POD_FILTER
+} ePodMacNotifyType;
+    
+typedef struct _PodMacNotify {
+    char        mac[MAX_MAC_ADDR_LEN];
+    ePodMacNotifyType msgType;
+} PodMacNotify;
 
 #endif /* MESHCFG_H_ */
