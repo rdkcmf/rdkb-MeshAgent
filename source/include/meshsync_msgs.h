@@ -88,6 +88,7 @@ typedef enum {
 typedef enum {
     MESH_STATE_FULL = 0,
     MESH_STATE_MONITOR,
+    MESH_STATE_WIFI_RESET,
     MESH_STATE_TOTAL
 } eMeshStateType;
 

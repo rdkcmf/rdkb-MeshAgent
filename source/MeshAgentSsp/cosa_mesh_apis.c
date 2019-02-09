@@ -76,6 +76,7 @@ const int QUEUE_PERMISSIONS=0660;
 const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 #endif
 
+#define MESH_ENABLED "/nvram/mesh_enabled"   
 // Flag to indicate when the SysEvent Handler is ready to process messages.
 static bool s_SysEventHandler_ready = false;
 extern  ANSC_HANDLE             bus_handle;
@@ -121,7 +122,8 @@ typedef struct
 
 MeshState_item meshStateArr[] = {
     {MESH_STATE_FULL,      "Full"},
-    {MESH_STATE_MONITOR,   "Monitor"}
+    {MESH_STATE_MONITOR,   "Monitor"},
+    {MESH_STATE_WIFI_RESET,"Reset"}
 };
 
 // MeshSync Message structure.
@@ -1105,9 +1107,53 @@ BOOL radio_check()
     return ret_b;
 }
 
+BOOL is_bridge_mode_enabled()
+{
+    ANSC_STATUS ret = ANSC_STATUS_FAILURE;
+    parameterValStruct_t    **valStructs = NULL;
+    char dstComponent[64]="eRT.com.cisco.spvtg.ccsp.pam";
+    char dstPath[64]="/com/cisco/spvtg/ccsp/pam";
+    char *paramNames[]={"Device.X_CISCO_COM_DeviceControl.LanManagementEntry.1.LanMode"};
+    int  valNum = 0;
+
+    ret = CcspBaseIf_getParameterValues(
+            bus_handle,
+            dstComponent,
+            dstPath,
+            paramNames,
+            1,
+            &valNum,
+            &valStructs);
+
+    if(CCSP_Message_Bus_OK != ret)
+    {
+         CcspTraceError(("%s CcspBaseIf_getParameterValues %s error %d\n", __FUNCTION__,paramNames[0],ret));
+         free_parameterValStruct_t(bus_handle, valNum, valStructs);
+         return FALSE;
+    }
+
+    MeshWarning("valStructs[0]->parameterValue = %s\n",valStructs[0]->parameterValue);
+
+    if( (strncmp("bridge-static", valStructs[0]->parameterValue,13)==0) || \
+                (strncmp("full-bridge-static", valStructs[0]->parameterValue,18)==0)
+          )
+    {
+         free_parameterValStruct_t(bus_handle, valNum, valStructs);
+         return TRUE;
+    }
+    else
+    {
+        free_parameterValStruct_t(bus_handle, valNum, valStructs);
+        return FALSE;
+    }
+
+}
+
 void meshSetSyscfg(bool enable)
 {
     int i =0;
+    FILE *fpMeshFile = NULL;
+
     MeshInfo("%s Setting mesh enable in syscfg to %d\n", __FUNCTION__, enable);
     if(Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, (enable?"true":"false"), true) != 0) {
          MeshInfo("Failed to set the Mesh Enable in syscfg, retrying 5 times\n");
@@ -1122,6 +1168,18 @@ void meshSetSyscfg(bool enable)
    }
    else
     MeshInfo("mesh enable set in the syscfg successfully\n");
+
+  if(enable) { 
+    MeshInfo("Set the flag in persistent memory for syscfg error recovery\n");
+    fpMeshFile = fopen(MESH_ENABLED ,"a");
+    fclose(fpMeshFile);
+  } else
+  {
+   if(!remove(MESH_ENABLED)) 
+    MeshInfo("Mesh Flag removed from persistent memory\n");
+   else
+    MeshError("Failed to remove Mesh Flag from persistent memory\n");
+  }
 }
 static void handleMeshEnable(void *Args)
 {
@@ -1135,6 +1193,11 @@ static void handleMeshEnable(void *Args)
 	 if (enable) {
             // This will only work if this service is started *AFTER* CcspWifi
             // If the service is not running, start it
+            if(is_bridge_mode_enabled()) {
+              MeshError("Brigde mode enabled, setting mesh wifi to disabled \n");
+              meshSetSyscfg(0);
+              return FALSE;
+            }
             if(!radio_check())
             {
               MeshError(("MESH_ERROR:Fail to enable Mesh because either one of the radios are off\n"));
@@ -1153,15 +1216,18 @@ static void handleMeshEnable(void *Args)
                 MeshInfo("Mesh interfaces are up\n");
             else
             {
+                Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, meshStateArr[MESH_STATE_WIFI_RESET].mStr, true);
                 MeshInfo("Mesh interfaces are not up, request wifi agent for bringing it up\n");
                 set_mesh_APs(true);
                 system("wifi_api wifi_init");          
+                Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, meshStateArr[MESH_STATE_FULL].mStr, true);
             }
             if ((err = svcagt_get_service_state(meshServiceName)) == 0)
             {
                 // returns "0" on success
                 if ((err = svcagt_set_service_state(meshServiceName, true)) != 0)
                 {
+                    MeshError("meshwifi service failed to run, igonoring the mesh enablement\n");
                     meshSetSyscfg(0);
                     success = FALSE;
                 }
@@ -1183,7 +1249,7 @@ static void handleMeshEnable(void *Args)
                 MeshInfo("Mesh AP are enabled, bringing it down\n");
                 set_mesh_APs(false);
                 system("wifi_api wifi_reset"); 
-            }         
+            }
         }
 
         if (success) {
@@ -1283,50 +1349,21 @@ BOOL is_DCS_enabled()
     return FALSE;
 }
 
-
-BOOL is_bridge_mode_enabled()
+/**
+ * Prash: This is a last option if all syscfg and retrial fails
+ *
+ */
+static void Mesh_Recovery()
 {
-    ANSC_STATUS ret = ANSC_STATUS_FAILURE;
-    parameterValStruct_t    **valStructs = NULL;
-    char dstComponent[64]="eRT.com.cisco.spvtg.ccsp.pam";
-    char dstPath[64]="/com/cisco/spvtg/ccsp/pam";
-    char *paramNames[]={"Device.X_CISCO_COM_DeviceControl.LanManagementEntry.1.LanMode"};
-    int  valNum = 0;
-
-    ret = CcspBaseIf_getParameterValues(
-            bus_handle,
-            dstComponent,
-            dstPath,
-            paramNames,
-            1,
-            &valNum,
-            &valStructs);
-
-    if(CCSP_Message_Bus_OK != ret)
+    if(!access(MESH_ENABLED, F_OK)) {
+     MeshInfo("mesh flag is enabled in nvram, setting mesh enabled\n");
+     Mesh_SetEnabled(true, true);
+    } else
     {
-         CcspTraceError(("%s CcspBaseIf_getParameterValues %s error %d\n", __FUNCTION__,paramNames[0],ret));
-         free_parameterValStruct_t(bus_handle, valNum, valStructs);
-         return FALSE;
+     MeshInfo("mesh flag not found in nvram, setting mesh disabled\n");
+     Mesh_SetEnabled(false, true);
     }
-
-    MeshWarning("valStructs[0]->parameterValue = %s\n",valStructs[0]->parameterValue);
-
-    if( (strncmp("bridge-static", valStructs[0]->parameterValue,13)==0) || \
-		(strncmp("full-bridge-static", valStructs[0]->parameterValue,18)==0)
-	  )
-    {
-         free_parameterValStruct_t(bus_handle, valNum, valStructs);
-         return TRUE;
-    }
-    else
-    {
-        free_parameterValStruct_t(bus_handle, valNum, valStructs);
-        return FALSE;
-    }
-
 }
-
-
 /**
  * @brief Mesh Agent set default values
  *
@@ -1403,7 +1440,14 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         {
           if(!Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, out_val, outbufsz)) {
             MeshInfo("Syscfg get passed in %d retrial\n", i+1);
-            Mesh_SetEnabled(true, true);
+            if (strncmp(out_val, "true", 4) == 0) {
+              Mesh_SetEnabled(true, true);
+             } else if (strncmp(out_val, "false", 5) == 0) {
+              MeshInfo("Setting initial mesh wifi to disabled\n");
+              Mesh_SetEnabled(false, true);
+            }
+            else
+ 	      Mesh_Recovery(); 
             break;
           }
           else
@@ -1415,8 +1459,8 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         cmd = popen("grep \"mesh_enable\" /nvram/syscfg.db | cut -d \"=\" -f2","r"); 
         if(cmd==NULL)
         {
-         MeshInfo("Error opening syscfg.db file apply default value\n");
-         Mesh_SetEnabled(false, true);
+         MeshInfo("Error opening syscfg.db file, do final attempt for recovery\n");
+         Mesh_Recovery();
         }
         else
         {
@@ -1426,31 +1470,24 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
           Mesh_SetEnabled(mesh_enable, true);
          else
          {
-          MeshInfo("mesh_enable returned null from syscfg.db apply default\n");
-          Mesh_SetEnabled(false, true);
-         }
+          MeshInfo("mesh_enable returned null from syscfg.db final attempt for recovery\n");
+          Mesh_Recovery();
+         } 
          pclose(cmd);
         }
        }
     } else {
         if (strcmp(out_val, "true") == 0) {
-
-	    if(is_bridge_mode_enabled())// || is_band_steering_enabled() || is_DCS_enabled())
-            {
-                MeshWarning("Brigde mode enabled, setting mesh wifi to disabled \n");
-                Mesh_SetEnabled(false, true);
-            }
-            else
-            {
-	        MeshInfo("Setting initial mesh wifi default to enabled\n");
-            	Mesh_SetEnabled(true, true);
-	    }
-        } else {
+            Mesh_SetEnabled(true, true);
+        } else if (strcmp(out_val, "false") == 0) {
             MeshInfo("Setting initial mesh wifi default to disabled\n");
             Mesh_SetEnabled(false, true);
         }
+        else {
+            MeshInfo("Unexpected value from syscfg , doing recovery\n");
+            Mesh_Recovery();
+        }
     }
-
     // MeshInfo("Exiting from %s\n",__FUNCTION__);
 }
 
