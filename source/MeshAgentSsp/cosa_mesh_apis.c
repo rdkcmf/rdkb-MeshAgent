@@ -1005,7 +1005,7 @@ BOOL is_reset_needed()
 
     if(valStructs && ((strncmp("true", valStructs[0]->parameterValue,4)==0) || (strncmp("true", valStructs[1]->parameterValue,4)==0)))
     {
-        MeshInfo("Mesh interfaces are up, Bring down and do wifi_reset \n");
+        MeshInfo("Mesh interfaces are up, Need to disable them\n");
         ret_b=(valStructs?true:false);
     }
 
@@ -1216,11 +1216,8 @@ static void handleMeshEnable(void *Args)
                 MeshInfo("Mesh interfaces are up\n");
             else
             {
-                Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, meshStateArr[MESH_STATE_WIFI_RESET].mStr, true);
-                MeshInfo("Mesh interfaces are not up, request wifi agent for bringing it up\n");
+                MeshInfo("Turning Mesh SSID enable\n");
                 set_mesh_APs(true);
-                system("wifi_api wifi_init");          
-                Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, meshStateArr[MESH_STATE_FULL].mStr, true);
             }
             if ((err = svcagt_get_service_state(meshServiceName)) == 0)
             {
@@ -1244,12 +1241,8 @@ static void handleMeshEnable(void *Args)
                     success = FALSE;
                 }
             }
-            if(is_reset_needed())
-	    {
-                MeshInfo("Mesh AP are enabled, bringing it down\n");
-                set_mesh_APs(false);
-                system("wifi_api wifi_reset"); 
-            }
+            system("wifi_api wifi_hostapdReconfig 12 \"\" 0");
+            system("wifi_api wifi_hostapdReconfig 13 \"\" 0");
         }
 
         if (success) {
