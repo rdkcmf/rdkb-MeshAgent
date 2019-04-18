@@ -1995,7 +1995,7 @@ static void *Mesh_sysevent_handler(void *data)
                             valFound = true;
                             break;
                         case 2:
-                            MeshInfo("ssid=%s\n", token);
+                            MeshInfo("ssid reveived\n", token);
                             strncpy(mMsg.data.wifiSSIDName.ssid, token, sizeof(mMsg.data.wifiSSIDName.ssid));
                             valFound = true;
                             break;
@@ -2052,17 +2052,17 @@ static void *Mesh_sysevent_handler(void *data)
                             valFound = true;
                             break;
                         case 2:
-                            MeshInfo("passphrase=%s\n", token);
+                            MeshInfo("passphrase recieved\n", token);
                             strncpy(mMsg.data.wifiAPSecurity.passphrase, token, sizeof(mMsg.data.wifiAPSecurity.passphrase));
                             valFound = true;
                             break;
                         case 3:
-                            MeshInfo("security mode=%s\n", token);
+                            MeshInfo("security mode received\n", token);
                             strncpy(mMsg.data.wifiAPSecurity.secMode, token, sizeof(mMsg.data.wifiAPSecurity.secMode));
                             valFound = true;
                             break;
                         case 4:
-                            MeshInfo("encryption mode=%s\n", token);
+                            MeshInfo("encryption mode recieved\n", token);
                             strncpy(mMsg.data.wifiAPSecurity.encryptMode, token, sizeof(mMsg.data.wifiAPSecurity.encryptMode));
                             valFound = true;
                             break;
