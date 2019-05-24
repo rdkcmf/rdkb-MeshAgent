@@ -371,8 +371,15 @@ MeshAgent_SetParamBoolValue
               }
          }
 
-        Mesh_SetEnabled(bValue, false);
-        return TRUE;
+        if(Mesh_SetEnabled(bValue, false))
+        { 
+         MeshWarning(("Set properly '%s'\n", ParamName));
+         return TRUE;
+        } else
+        {
+         MeshWarning(("Failed to Set '%s'\n", ParamName));
+         return FALSE;
+        }
     }
 
     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
