@@ -25,9 +25,9 @@ Type=oneshot
 WorkingDirectory=/usr/plume
 
 ExecStartPre=/bin/echo "Mesh Wifi Starting"
-ExecStart=/usr/plume/scripts/managers.init start
+ExecStart=/usr/ccsp/wifi/handle_mesh start
 
-ExecStop=/usr/plume/scripts/managers.init stop
+ExecStop=/usr/ccsp/wifi/handle_mesh stop
 ExecStopPost=/bin/echo "Mesh Wifi Stopping"
 Restart=no
 RemainAfterExit=yes
