@@ -1371,10 +1371,6 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
 
     PCOSA_DATAMODEL_MESHAGENT pMyObject = (PCOSA_DATAMODEL_MESHAGENT) hThisObject;
 
-    // MeshInfo("Entering into %s\n",__FUNCTION__);
-    // Initialize the connected client list
-    Mesh_InitClientList();
-
     // Check to see if the mesh dev flag is set
     bool devFlag = (access(meshDevFile, F_OK) == 0);
 
@@ -2407,6 +2403,9 @@ static void *Mesh_sysevent_handler(void *data)
                         eMeshIfaceType iface;
                         char *mac;
                         char *host;
+
+	 		MeshInfo("Update the active client list from host table\n");
+			Mesh_InitClientList();
 
                         MeshInfo("Mesh is in Full/Monitor Mode, report %d connected clients\n", Mesh_ActiveClientCount());
 
