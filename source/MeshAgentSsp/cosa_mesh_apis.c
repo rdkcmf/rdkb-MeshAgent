@@ -1297,8 +1297,8 @@ BOOL radio_check()
     parameterValStruct_t    **valStructs = NULL;
     char dstComponent[64]="eRT.com.cisco.spvtg.ccsp.wifi";
     char dstPath[64]="/com/cisco/spvtg/ccsp/wifi";
-    const char Radio1[]="Device.WiFi.Radio.1.Enable";
-    const char Radio2[]="Device.WiFi.Radio.2.Enable";
+    const char Radio1[]="Device.WiFi.Radio.1.Status";
+    const char Radio2[]="Device.WiFi.Radio.2.Status";
     char *paramNames[]={Radio1,Radio2};
     int  valNum = 0;
     BOOL ret_b=FALSE;
@@ -1319,7 +1319,7 @@ BOOL radio_check()
     }
 
 
-    if(valStructs && ((strncmp("false", valStructs[0]->parameterValue,5)==0) || (strncmp("false", valStructs[1]->parameterValue,5)==0)))
+    if(valStructs && ((strncmp("Down", valStructs[0]->parameterValue,4)==0) || (strncmp("Down", valStructs[1]->parameterValue,4)==0)))
         MeshError("Radio Error: Status 2.4= %s 5= %s \n", valStructs[0]->parameterValue, valStructs[1]->parameterValue);
     else
          ret_b=(valStructs?true:false);
@@ -1362,6 +1362,7 @@ BOOL is_bridge_mode_enabled()
                 (strncmp("full-bridge-static", valStructs[0]->parameterValue,18)==0)
           )
     {
+         MeshError("Brigde mode enabled, setting mesh wifi to disabled \n");
          free_parameterValStruct_t(bus_handle, valNum, valStructs);
          return TRUE;
     }
@@ -1503,14 +1504,8 @@ static void handleMeshEnable(void *Args)
 	 if (enable) {
             // This will only work if this service is started *AFTER* CcspWifi
             // If the service is not running, start it
-            if(is_bridge_mode_enabled()) {
-              MeshError("Brigde mode enabled, setting mesh wifi to disabled \n");
-              meshSetSyscfg(0);
-              return FALSE;
-            }
-            if(!radio_check())
-            {
-              MeshError(("MESH_ERROR:Fail to enable Mesh because either one of the radios are off\n"));
+            if(!radio_check() || is_bridge_mode_enabled()) {
+              MeshError("Mesh Pre-check conditions failed, setting mesh wifi to disabled \n");
               meshSetSyscfg(0);
               return FALSE;
             }
@@ -2886,7 +2881,6 @@ static void *Mesh_sysevent_handler(void *data)
                         {
                             if(is_bridge_mode_enabled())// || is_band_steering_enabled() || is_DCS_enabled())
                             {
-                                MeshWarning("MESH_ERROR:Fail to enable Mesh when Brigde mode, setting mesh wifi to disabled \n");
                                 enabled = false;
                             }
                         }
