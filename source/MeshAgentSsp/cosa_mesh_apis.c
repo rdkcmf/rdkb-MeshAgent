@@ -1172,7 +1172,10 @@ void meshSetSyscfg(bool enable)
   if(enable) { 
     MeshInfo("Set the flag in persistent memory for syscfg error recovery\n");
     fpMeshFile = fopen(MESH_ENABLED ,"a");
-    fclose(fpMeshFile);
+    if (fpMeshFile)
+        fclose(fpMeshFile);
+    else
+        MeshInfo("fpMeshFile is NULL\n");
   } else
   {
    if(!remove(MESH_ENABLED)) 
