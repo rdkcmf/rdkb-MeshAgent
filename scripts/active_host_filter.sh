@@ -56,7 +56,7 @@ then
             array=( $line )
             mac_array[$count]=`echo ${array[4]} | sed 's/^[ \t]*//'`
             ;;
-        *Layer1Interface*)
+        *.Layer1Interface*)
             read line
             array=( $line )
             iface=`echo ${array[4]} | sed 's/^[ \t]*//'`
