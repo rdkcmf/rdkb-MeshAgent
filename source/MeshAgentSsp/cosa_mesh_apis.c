@@ -1243,8 +1243,7 @@ bool handleMeshEnable(bool enable)
                     success = FALSE;
                 }
             }
-            system("wifi_api wifi_hostapdReconfig 12 \"\" 0");
-            system("wifi_api wifi_hostapdReconfig 13 \"\" 0");
+            system("wifi_api wifi_meshReconfig 0");
         }
 
         if (success) {
