@@ -79,6 +79,7 @@ typedef enum {
     MESH_DHCP_ADD_LEASE,
     MESH_DHCP_REMOVE_LEASE,
     MESH_DHCP_UPDATE_LEASE,
+    MESH_WIFI_RADIO_CHANNEL_BW,
     MESH_SYNC_MSG_TOTAL
 } eMeshSyncType;
 
@@ -271,6 +272,14 @@ typedef struct _MeshWifiDhcpLease {
 } MeshWifiDhcpLease;
 
 /**
+ * Channel Bandwidth change notification
+ */
+typedef struct _MeshWifiRadioChannelBw {
+    int index;
+    int bw;
+} MeshWifiRadioChannelBw;
+
+/**
  * Mesh Sync message
  */
 typedef struct _MeshSync {
@@ -294,7 +303,8 @@ typedef struct _MeshSync {
         MeshStateChange                 meshState;
         MeshWifiTxRate                  wifiTxRate;
         MeshClientConnect               meshConnect;
-        MeshWifiDhcpLease               meshLease; 
+        MeshWifiDhcpLease               meshLease;
+        MeshWifiRadioChannelBw          wifiRadioChannelBw; 
     } data;
 } MeshSync;
 
