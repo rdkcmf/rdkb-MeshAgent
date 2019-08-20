@@ -157,7 +157,8 @@ MeshSync_MsgItem meshSyncMsgArr[] = {
     {MESH_DHCP_RESYNC_LEASES,               "MESH_DHCP_RESYNC_LEASES",              "lease_resync"},
     {MESH_DHCP_ADD_LEASE,                   "MESH_DHCP_ADD_LEASE",                  "lease_add"},
     {MESH_DHCP_REMOVE_LEASE,                "MESH_DHCP_REMOVE_LEASE",               "lease_remove"},
-    {MESH_DHCP_UPDATE_LEASE,                "MESH_DHCP_UPDATE_LEASE",               "lease_update"}};
+    {MESH_DHCP_UPDATE_LEASE,                "MESH_DHCP_UPDATE_LEASE",               "lease_update"},
+    {MESH_WIFI_RADIO_CHANNEL_BW,            "MESH_WIFI_RADIO_CHANNEL_BW",           "channel_update"}};
 typedef struct
 {
     eMeshIfaceType  mType;
@@ -182,7 +183,7 @@ static bool Mesh_Register_sysevent(ANSC_HANDLE hThisObject);
 static void *Mesh_sysevent_handler(void *data);
 int Mesh_Init(ANSC_HANDLE hThisObject);
 void Mesh_InitClientList();
-
+void changeChBandwidth( int, int);
 /**
  * @brief Mesh Agent Interface lookup function
  *
@@ -362,6 +363,13 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
         sprintf(cmd, "MESH|%s",meshWifiStatusArr[rxMsg.data.wifiStatus.status].mStr);
         Mesh_SyseventSetStr(meshSyncMsgArr[MESH_WIFI_STATUS].sysStr, cmd, 0, true);
 
+    }
+    break;
+    case MESH_WIFI_RADIO_CHANNEL_BW:
+    {
+        MeshInfo("Recieved Channel BW change notification radioId = %d channel = %d\n", 
+                  rxMsg.data.wifiRadioChannelBw.index, rxMsg.data.wifiRadioChannelBw.bw); 
+        changeChBandwidth(rxMsg.data.wifiRadioChannelBw.index, rxMsg.data.wifiRadioChannelBw.bw);
     }
     break;
     // the rest of these messages will not come from the Mesh vendor
@@ -900,6 +908,45 @@ bool Mesh_GetEnabled()
     }
 
     return enabled;
+}
+
+void changeChBandwidth(int radioId, int channelBw) {
+  CCSP_MESSAGE_BUS_INFO *bus_info = (CCSP_MESSAGE_BUS_INFO *)bus_handle;
+  parameterValStruct_t   param_val[1];
+  char parameterName[256] = {0};
+  char parameterValue[16] = {0};
+  char  component[256]  = "eRT.com.cisco.spvtg.ccsp.wifi";
+  char  bus[256]        = "/com/cisco/spvtg/ccsp/wifi";
+  char* faultParam      = NULL;
+  int   ret             = 0;
+
+  sprintf(parameterName, "Device.WiFi.Radio.%d.OperatingChannelBandwidth", radioId+1); 
+  sprintf(parameterValue, "%dMHz", channelBw); 
+  
+  param_val[0].parameterName=parameterName;
+  param_val[0].parameterValue=parameterValue;
+  param_val[0].type = ccsp_string;
+
+  MeshInfo("RDK_LOG_WARN, %s-%d [set %s %s] \n",__FUNCTION__,__LINE__, parameterName, parameterValue);
+
+    ret = CcspBaseIf_setParameterValues(
+            bus_handle,
+            component,
+            bus,
+            0,
+            0,
+            &param_val,
+            1,
+            TRUE,
+            &faultParam
+            );
+
+    if( ( ret != CCSP_SUCCESS ) && ( faultParam!=NULL )) {
+        MeshError(" %s-%d Failed to set %s\n",__FUNCTION__,__LINE__, parameterName);
+        bus_info->freefunc( faultParam );
+        return FALSE;
+    }
+    return TRUE;
 }
 
 BOOL set_wifi_boolean_enable(char *parameterName, char *parameterValue) {
