@@ -1231,13 +1231,14 @@ void meshSetSyscfg(bool enable)
     MeshError("Failed to remove Mesh Flag from persistent memory\n");
   }
 }
-
-bool handleMeshEnable(bool enable)
+static void handleMeshEnable(void *Args)
 {
 	bool success = TRUE;
 	unsigned char outBuf[128];
+        bool enable = (bool)Args;
         int err = 0;
         int i = 0;
+        pthread_detach(pthread_self());
 
 	 if (enable) {
             // This will only work if this service is started *AFTER* CcspWifi
@@ -1308,7 +1309,7 @@ bool handleMeshEnable(bool enable)
         } else {
             MeshError("Error %d %s Mesh Wifi\n", err, (enable?"enabling":"disabling"));
         }
-   return success;
+   return NULL;
 }
 /**
  * @brief Mesh Agent Set Enable/Disable
@@ -1325,7 +1326,8 @@ bool Mesh_SetEnabled(bool enable, bool init)
     {
         meshSetSyscfg(enable);
  	pthread_t tid;
-	success = handleMeshEnable(enable);
+	pthread_create(&tid, NULL, &handleMeshEnable, (void*)enable);
+
     }
 
     return success;
