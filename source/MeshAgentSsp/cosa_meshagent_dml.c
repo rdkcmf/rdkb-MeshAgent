@@ -376,6 +376,14 @@ MeshAgent_SetParamBoolValue
                  }
               }
          }
+         else {
+              MeshInfo("Mesh disabled, Disable Ethernet bhaul if enabled\n");
+              if( g_pMeshAgent->PodEthernetBackhaulEnable)
+              {
+                MeshInfo("Send Eth Bhaul disable notification to plume\n");
+                Mesh_SetMeshEthBhaul(false,true); 
+              } 
+         }
 
         Mesh_SetEnabled(bValue, false);
         return TRUE;

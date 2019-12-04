@@ -182,6 +182,8 @@ static void *Mesh_sysevent_handler(void *data);
 int Mesh_Init(ANSC_HANDLE hThisObject);
 void Mesh_InitClientList();
 void changeChBandwidth( int, int);
+static char EthPodMacs[MAX_MAC_ADDR_LEN][MAX_POD_COUNT];
+static int eth_mac_count = 0;
 /**
  * @brief Mesh Agent Interface lookup function
  *
@@ -253,6 +255,30 @@ int Mesh_DnsmasqSock(void)
  }
  return 1;
 }
+
+static bool Mesh_PodAddress(char *mac, bool add)
+{
+  int i;
+  for(i =0; i<=MAX_POD_COUNT; i++)
+  {
+   if(!strncmp(EthPodMacs[i], mac, MAX_MAC_ADDR_LEN))
+   {
+    MeshInfo("Pod mac detected as connected client, ignore update\n");
+    return TRUE;
+   }
+  }
+  if( add) {
+   MeshInfo("Adding the Ethernet pod mac in the local copy mac: %s\n", mac);
+   strncpy(EthPodMacs[eth_mac_count++], mac, MAX_MAC_ADDR_LEN);
+  } 
+  else
+  {
+   MeshInfo("Send the Connect event for this client as normal client: %s\n");
+  }
+  
+  return FALSE;
+}
+
 //Prash
 /**
  *  @brief MeshAgent Process Send Pod mac to dnsmasq for filtering
@@ -284,6 +310,7 @@ void Mesh_SendEthernetMac(char *mac)
  else {
     MeshError("Socket failed in %s\n", __FUNCTION__);
  }
+
   return 1;
 }
 
@@ -433,6 +460,7 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
        Mesh_SendEthernetMac(rxMsg.data.ethMac.mac);
       else
        MeshInfo("Ethernet bhaul disabled, ignoring the Pod mac update\n");
+      Mesh_PodAddress( rxMsg.data.ethMac.mac, TRUE);
     } 
     break;
     // the rest of these messages will not come from the Mesh vendor
@@ -1683,6 +1711,10 @@ bool Mesh_UpdateConnectedDevice(char *mac, char *iface, char *host, char *status
 
     // Notify plume
     // Set sync message type
+    if( Mesh_PodAddress(mac, FALSE)) {
+     MeshInfo("Skipping pod connect event to plume cloud | mac=%s\n", mac);
+     return false;
+    }
     mMsg.msgType = MESH_CLIENT_CONNECT;
     if (mac != NULL && mac[0] != '\0') {
         strncpy(mMsg.data.meshConnect.mac, mac, sizeof(mMsg.data.meshConnect.mac)-1);
@@ -2624,6 +2656,8 @@ static void *Mesh_sysevent_handler(void *data)
                         while (Mesh_ClientTableIterNext(&iter, &iface, &mac, &host))
                         {
                             // send out notification to plume
+                           if( !Mesh_PodAddress(mac, FALSE)) 
+                           {
                             MeshSync mMsg = {0};
 
                             // Notify plume
@@ -2638,6 +2672,7 @@ static void *Mesh_sysevent_handler(void *data)
 
                             // We filled our data structure so we can send it off
                             msgQSend(&mMsg);
+                           }
                         }
                     }
                 }
