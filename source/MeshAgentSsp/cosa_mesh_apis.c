@@ -77,7 +77,8 @@ const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 #endif
 
 #define MESH_ENABLED "/nvram/mesh_enabled"   
-// Flag to indicate when the SysEvent Handler is ready to process messages.
+#define POD_LINK_SCRIPT "/usr/ccsp/wifi/mesh_status.sh"
+#define POD_IP_PREFIX   "192.168.245."
 static bool s_SysEventHandler_ready = false;
 extern  ANSC_HANDLE             bus_handle;
 
@@ -182,7 +183,7 @@ static void *Mesh_sysevent_handler(void *data);
 int Mesh_Init(ANSC_HANDLE hThisObject);
 void Mesh_InitClientList();
 void changeChBandwidth( int, int);
-static char EthPodMacs[MAX_MAC_ADDR_LEN][MAX_POD_COUNT];
+static char EthPodMacs[MAX_POD_COUNT][MAX_MAC_ADDR_LEN];
 static int eth_mac_count = 0;
 /**
  * @brief Mesh Agent Interface lookup function
@@ -259,7 +260,7 @@ int Mesh_DnsmasqSock(void)
 static bool Mesh_PodAddress(char *mac, bool add)
 {
   int i;
-  for(i =0; i<=MAX_POD_COUNT; i++)
+  for(i =0; i <= eth_mac_count; i++)
   {
    if(!strncmp(EthPodMacs[i], mac, MAX_MAC_ADDR_LEN))
    {
@@ -268,8 +269,9 @@ static bool Mesh_PodAddress(char *mac, bool add)
    }
   }
   if( add) {
-   MeshInfo("Adding the Ethernet pod mac in the local copy mac: %s\n", mac);
-   strncpy(EthPodMacs[eth_mac_count++], mac, MAX_MAC_ADDR_LEN);
+   MeshInfo("Adding the Ethernet pod mac in the local copy mac: %s idx: %d\n", mac, eth_mac_count);
+   strncpy(EthPodMacs[eth_mac_count], mac, MAX_MAC_ADDR_LEN);
+   eth_mac_count++;
   } 
   else
   {
@@ -1806,6 +1808,8 @@ void Mesh_sendDhcpLeaseSync(void)
  */
 void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostname, char *fingerprint)
 {
+    char cmd[256]={0};
+    int  rc = -1;
     // send out notification to plume
     MeshSync mMsg = {0};
     // Notify plume
@@ -1817,6 +1821,18 @@ void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostna
     strncpy(mMsg.data.meshLease.fingerprint, fingerprint, sizeof(mMsg.data.meshLease.fingerprint)-1);
     MeshInfo("DNSMASQ: %d %s %s %s %s\n",mMsg.msgType,mMsg.data.meshLease.mac, mMsg.data.meshLease.ipaddr, mMsg.data.meshLease.hostname, mMsg.data.meshLease.fingerprint);
     msgQSend(&mMsg);
+    // Link change notification: prints telemetry on pod networks
+    if( msgType != MESH_DHCP_REMOVE_LEASE && Mesh_PodAddress(mac, FALSE) && strstr( ipaddr, POD_IP_PREFIX)) {
+     if (access(POD_LINK_SCRIPT, F_OK) == 0) {
+      memset( cmd, 0, sizeof(cmd));
+      snprintf( cmd, sizeof(cmd), "%s &", POD_LINK_SCRIPT);
+      rc = system(cmd);
+      if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
+      {
+        MeshError("%s: pod link script fail rc = %d\n", cmd, WEXITSTATUS(rc));
+      }
+     }
+    } 
     return true;
 }
 
