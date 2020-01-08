@@ -1393,6 +1393,14 @@ static void handleMeshEnable(void *Args)
         } else {
             // This will only work if this service is started *AFTER* CcspWifi
             // If the service is running, stop it
+#if defined (_HUB4_PRODUCT_REQ_)
+            //Disable mesh AP
+            if(is_SSID_enabled())
+            {
+                MeshInfo("Disable Mesh SSID \n");
+                set_mesh_APs(false);
+            }
+#endif /* _HUB4_PRODUCT_REQ_ */
             if ((err = svcagt_get_service_state(meshServiceName)) == 1)
             {
                 // returns "0" on success
