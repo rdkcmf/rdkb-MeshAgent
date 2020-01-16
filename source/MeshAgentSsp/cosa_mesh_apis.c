@@ -77,6 +77,7 @@ const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 #endif
 
 #define MESH_ENABLED "/nvram/mesh_enabled"   
+#define LOCAL_HOST   "127.0.0.1"
 #define POD_LINK_SCRIPT "/usr/ccsp/wifi/mesh_status.sh"
 #define POD_IP_PREFIX   "192.168.245."
 static bool s_SysEventHandler_ready = false;
@@ -233,12 +234,19 @@ eMeshWifiStatusType Mesh_WifiStatusLookup(char *status)
     return ret;
 }
 
+bool isValidIpAddress(char *ipAddress)
+{
+    struct sockaddr_in sa;
+    int result = inet_pton(AF_INET, ipAddress, &(sa.sin_addr));
+    return result != 0;
+}
+
 int Mesh_DnsmasqSock(void)
 {
  if(!dnsmasqFd)
  {
   FILE *cmd;
-  char armIP[32];
+  char armIP[32] = {'\0'};;
   cmd = popen("grep \"ARM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
   if(cmd == NULL) {
        return 0;
@@ -250,7 +258,14 @@ int Mesh_DnsmasqSock(void)
     return 0;
   dnsserverAddr.sin_family = AF_INET;
   dnsserverAddr.sin_port = htons(47030);
-  dnsserverAddr.sin_addr.s_addr = inet_addr(armIP);
+  if(!isValidIpAddress(armIP)) {
+   MeshInfo("Socket bind to localhost\n");
+   dnsserverAddr.sin_addr.s_addr = inet_addr(LOCAL_HOST);
+  } else
+  {
+   MeshInfo("Socket bind to ARM IP %s\n", armIP);
+   dnsserverAddr.sin_addr.s_addr = inet_addr(armIP);
+  }
   memset(dnsserverAddr.sin_zero, '\0', sizeof dnsserverAddr.sin_zero);
   MeshInfo("Created dnsmasq socket for Eth Bhaul mac update\n");
  }
@@ -476,6 +491,21 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
     }
 }
 
+static void Mesh_logLinkChange()
+{
+ char cmd[256] = {0};
+ int rc = -1;
+ if (access(POD_LINK_SCRIPT, F_OK) == 0) {
+      memset( cmd, 0, sizeof(cmd));
+      snprintf( cmd, sizeof(cmd), "%s &", POD_LINK_SCRIPT);
+      rc = system(cmd);
+      if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
+      {
+        MeshError("%s: pod link script fail rc = %d\n", cmd, WEXITSTATUS(rc));
+      }
+   }
+}
+
 /**
  *  @brief Mesh Agent dnsmasq lease server thread
  *  This function will create a server socket for the dnsmasq lease notifications. 
@@ -494,6 +524,7 @@ static int leaseServer(void *data)
    char atomIP[32];
    int msgType = 0;
    FILE *cmd;
+   bool gdoNtohl;
 
    cmd = popen("grep \"ATOM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
     if(cmd == NULL) {
@@ -506,8 +537,19 @@ static int leaseServer(void *data)
    Socket = socket(PF_INET, SOCK_DGRAM, 0);
 
    serverAddr.sin_family = AF_INET;
+   if(!isValidIpAddress(atomIP)) {
+   //Receive msgs from the dnsmasq
+   MeshInfo("leaseServer Socket bind to localhost\n");
+   serverAddr.sin_addr.s_addr = inet_addr(LOCAL_HOST);
+   serverAddr.sin_port = htons(47040);
+   gdoNtohl = false;
+   }
+   else
+   {
    serverAddr.sin_port = htons(47030);
    serverAddr.sin_addr.s_addr = inet_addr(atomIP);
+   gdoNtohl = true;
+   }
    memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);
 
    bind(Socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
@@ -517,15 +559,24 @@ static int leaseServer(void *data)
    while(1) {
     
      nBytes = recvfrom(Socket,(char *)&rxBuf,sizeof(LeaseNotify),0,(struct sockaddr *)&serverStorage, &addr_size);
-     msgType = (int)ntohl(rxBuf.msgType);
-     if(clientSocketsMask && msgType > POD_ETH_PORT)
+     if(gdoNtohl)
+      msgType = (int)ntohl(rxBuf.msgType);
+     else
+      msgType = (int)(rxBuf.msgType);
+      
+     if(clientSocketsMask && msgType > POD_ETH_BHAUL)
       Mesh_sendDhcpLeaseUpdate( msgType, rxBuf.lease.mac, rxBuf.lease.ipaddr, rxBuf.lease.hostname, rxBuf.lease.fingerprint);
      else if( msgType == POD_XHS_PORT)
       MeshWarning("Pod is connected on XHS ethernet Port, Unplug and plug in to different one\n");
      else if( msgType == POD_ETH_PORT)
       MeshWarning("Pod is non operational on ethernet port while Ethernet bhaul feature is not enabled\n");
+     else
+     {
+      MeshWarning("Pod link change detected\n");
+      Mesh_logLinkChange();
+     } 
+    }
      
-   }
    return 0;
 }
 #if defined(ENABLE_MESH_SOCKETS)
@@ -1808,8 +1859,6 @@ void Mesh_sendDhcpLeaseSync(void)
  */
 void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostname, char *fingerprint)
 {
-    char cmd[256]={0};
-    int  rc = -1;
     // send out notification to plume
     MeshSync mMsg = {0};
     // Notify plume
@@ -1823,16 +1872,8 @@ void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostna
     msgQSend(&mMsg);
     // Link change notification: prints telemetry on pod networks
     if( msgType != MESH_DHCP_REMOVE_LEASE && Mesh_PodAddress(mac, FALSE) && strstr( ipaddr, POD_IP_PREFIX)) {
-     if (access(POD_LINK_SCRIPT, F_OK) == 0) {
-      memset( cmd, 0, sizeof(cmd));
-      snprintf( cmd, sizeof(cmd), "%s &", POD_LINK_SCRIPT);
-      rc = system(cmd);
-      if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
-      {
-        MeshError("%s: pod link script fail rc = %d\n", cmd, WEXITSTATUS(rc));
-      }
+      Mesh_logLinkChange();
      }
-    } 
     return true;
 }
 
