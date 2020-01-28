@@ -38,8 +38,10 @@ CosaDmlServiceManagerInit
     X_RDKCENTRAL-COM_Mesh.
 
     *  MeshAgent_GetParamBoolValue
+    *  OVS_GetParamBoolValue
     *  MeshAgent_GetParamStringValue
     *  MeshAgent_SetParamBoolValue
+    *  OVS_SetParamBoolValue
     *  MeshAgent_SetParamStringValue
     *  MeshAgent_Validate
     *  MeshAgent_Commit
@@ -48,6 +50,14 @@ CosaDmlServiceManagerInit
 ***********************************************************************/
 BOOL
 MeshAgent_GetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL*                       pBool
+    );
+
+BOOL
+OVS_GetParamBoolValue
     (
         ANSC_HANDLE                 hInsContext,
         char*                       ParamName,
@@ -81,6 +91,14 @@ MeshAgent_SetParamUlongValue
 
 BOOL
 MeshAgent_SetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL                        bValue
+    );
+
+BOOL
+OVS_SetParamBoolValue
     (
         ANSC_HANDLE                 hInsContext,
         char*                       ParamName,

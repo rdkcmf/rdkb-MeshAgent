@@ -53,13 +53,15 @@ COSA_Init
     MeshInfo("Registering the back-end apis for the data model\n");
 
 
-    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_GetParamBoolValue",  MeshAgent_GetParamBoolValue);
-    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_SetParamBoolValue",  MeshAgent_SetParamBoolValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_GetParamBoolValue",    MeshAgent_GetParamBoolValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "OVS_GetParamBoolValue",          OVS_GetParamBoolValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_SetParamBoolValue",    MeshAgent_SetParamBoolValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "OVS_SetParamBoolValue",          OVS_SetParamBoolValue);
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_GetParamStringValue",  MeshAgent_GetParamStringValue);
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_SetParamStringValue",  MeshAgent_SetParamStringValue);
-    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_GetParamUlongValue",  MeshAgent_GetParamUlongValue);
-    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_Validate",  MeshAgent_Validate);
-    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_Commit",  MeshAgent_Commit);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_GetParamUlongValue",   MeshAgent_GetParamUlongValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_Validate",             MeshAgent_Validate);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_Commit",               MeshAgent_Commit);
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_Rollback",  MeshAgent_Rollback);
     
 
