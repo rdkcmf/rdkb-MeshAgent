@@ -1393,6 +1393,26 @@ void meshSetEthbhaulSyscfg(bool enable)
     MeshInfo("eth bhaul enable set in the syscfg successfully\n");
 }
 
+void meshSetOVSSyscfg(bool enable)
+{
+    int i =0;
+
+    MeshInfo("%s Setting OVS enable in syscfg to %d\n", __FUNCTION__, enable);
+    if(Mesh_SysCfgSetStr("mesh_ovs_enable", (enable?"true":"false"), true) != 0) {
+         MeshInfo("Failed to set the OVS Enable in syscfg, retrying 5 times\n");
+         for(i=0; i<5; i++) {
+         if(!Mesh_SysCfgSetStr("mesh_ovs_enable", (enable?"true":"false"), true)) {
+           MeshInfo("ovs syscfg set passed in %d attempt\n", i+1);
+           break;
+         }
+         else
+          MeshInfo("ovs syscfg set retrial failed in %d attempt\n", i+1);
+      }
+   }
+   else
+    MeshInfo("ovs enable set in the syscfg successfully\n");
+}
+
 void meshSetSyscfg(bool enable)
 {
     int i =0;
@@ -1446,6 +1466,28 @@ bool Mesh_SetMeshEthBhaul(bool enable, bool init)
     // If ethernet bhaul is disabled, send msg to dnsmasq informing same with a dummy mac    
         if(!enable) 
           Mesh_SendEthernetMac("00:00:00:00:00:00");
+    }
+    return TRUE;
+}
+
+/**
+ * @brief Mesh Agent OpenvSwitch Set Enable/Disable
+ *
+ * This function will enable/disable the OpenvSwitch mode
+ */
+bool Mesh_SetOVS(bool enable, bool init)
+{
+    // If the enable value is different or this is during setup - make it happen.
+    if (init || Mesh_GetEnabled("mesh_ovs_enable") != enable)
+    {
+        meshSetOVSSyscfg(enable);
+        g_pMeshAgent->OvsEnable = enable;
+        //Send this as an RFC update to plume manager
+        if(enable)
+         MeshInfo("OVS_RFC_changed_to_enabled\n");
+        else
+         MeshInfo("OVS_RFC_changed_to_disabled\n");
+        Mesh_sendRFCUpdate("OVS.Enable", enable ? "true" : "false", rfc_boolean);
     }
     return TRUE;
 }
@@ -1764,6 +1806,26 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         Mesh_SetMeshEthBhaul(true,true);
       }
     }
+
+    out_val[0]='\0'; 
+
+    if(Mesh_SysCfgGetStr("mesh_ovs_enable", out_val, outbufsz) != 0)
+    {
+        MeshInfo("Syscfg error, Setting OVS mode to default\n");
+        Mesh_SetOVS(false,true);
+    } else {
+       if (strncmp(out_val, "true", 4) == 0) {
+           MeshInfo("Setting initial OVS mode to true\n");
+           Mesh_SetOVS(true,true);
+       } else if (strncmp(out_val, "false", 5) == 0) {
+           MeshInfo("Setting initial OVS mode to false\n");
+           Mesh_SetOVS(false,true);
+       }
+       else {
+        MeshInfo("OVS status error from syscfg , setting default\n");
+        Mesh_SetOVS(false,true);
+      }
+    }
     // MeshInfo("Exiting from %s\n",__FUNCTION__);
 }
 
@@ -2052,9 +2114,12 @@ static void *Mesh_sysevent_handler(void *data)
         {
             if (strcmp(name, meshSyncMsgArr[MESH_WIFI_RESET].sysStr)==0)
             {
-                MeshInfo("received notification event %s\n", name);
+                if( val)
+                 MeshInfo("received notification event %s val =%s \n", name, val);
+                else
+                 MeshInfo("received notification event %s\n", name);
                 // Need to restart the meshwifi service if it is currently running.
-                if (svcagt_get_service_state(meshServiceName))
+                if (g_pMeshAgent->meshEnable || svcagt_get_service_state(meshServiceName))
                 {
                     MeshSync mMsg = {0};
 
@@ -2071,10 +2136,19 @@ static void *Mesh_sysevent_handler(void *data)
                      * than having to be re-started.
                      */
                     // shutdown
-                    svcagt_set_service_state(meshServiceName, false);
-                    sleep (3);
-                    // startup
-                    svcagt_set_service_state(meshServiceName, true);
+                    if (val && val[0] != '\0' && g_pMeshAgent->meshEnable)
+                    {
+                     if(!strcmp( val, "start" )) {
+                       MeshInfo("Stopping meshwifi service\n");
+                       svcagt_set_service_state(meshServiceName, false);
+                     }
+                     else if(!strcmp( val, "stop" )) {
+                       MeshInfo("Starting meshwifi service\n");
+                       svcagt_set_service_state(meshServiceName, true);
+                     }
+                     else  
+                      MeshWarning("Unsupported option %s \n", val);
+                    }
                 } else {
                     MeshInfo("meshwifi.service is not running - not restarting\n");
                 }

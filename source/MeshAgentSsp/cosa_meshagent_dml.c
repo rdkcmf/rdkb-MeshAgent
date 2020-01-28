@@ -114,6 +114,8 @@ void _MESHAGENT_LOG(unsigned int level, const char *msg, ...)
     *  MeshAgent_GetParamUlongValue
     *  MeshAgent_SetParamBoolValue
     *  MeshAgent_SetParamStringValue
+    *  OVS_GetParamBoolValue
+    *  OVS_SetParamBoolValue
     *  MeshAgent_Validate
     *  MeshAgent_Commit
     *  MeshAgent_Rollback
@@ -175,6 +177,55 @@ MeshAgent_GetParamBoolValue
     return FALSE;
 }
 
+/**********************************************************************  
+
+    caller:     owner of this object 
+
+    prototype: 
+
+        BOOL
+        OVS_GetParamBoolValue
+            (
+                ANSC_HANDLE                 hInsContext,
+                char*                       ParamName,
+                BOOL*                       pBool
+            );
+
+    description:
+
+        This function is called to retrieve Boolean parameter value for RFC Openvswitch;
+
+    argument:   ANSC_HANDLE                 hInsContext,
+                The instance handle;
+
+                char*                       ParamName,
+                The parameter name;
+
+                BOOL*                       pBool
+                The buffer of returned boolean value;
+
+    return:     TRUE if succeeded.
+
+**********************************************************************/
+BOOL
+OVS_GetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL*                       pBool
+    )
+{
+    /* check the parameter name and return the corresponding value */
+    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
+    if( AnscEqualString(ParamName, "Enable", TRUE))
+    {
+        *pBool = g_pMeshAgent->OvsEnable;
+        return TRUE;
+    }
+    else
+     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    return FALSE;
+}
 
 /**********************************************************************  
 
@@ -392,6 +443,57 @@ MeshAgent_SetParamBoolValue
     {
      MeshInfo("Pod ethernet bhaul mode set\n");
      Mesh_SetMeshEthBhaul(bValue,false);
+     return TRUE; 
+    }
+    else
+     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    return FALSE;
+}
+
+/**********************************************************************
+
+    caller:     owner of this object
+
+    prototype:
+
+        BOOL
+        OVS_SetParamBoolValue
+            (
+                ANSC_HANDLE                 hInsContext,
+                char*                       ParamName,
+                BOOL                        bValue
+            );
+
+    description:
+
+        This function is called to set BOOL parameter value for OpenVSwitch;
+
+    argument:   ANSC_HANDLE                 hInsContext,
+                The instance handle;
+
+                char*                       ParamName,
+                The parameter name;
+
+                BOOL                        bValue
+                The updated BOOL value;
+
+    return:     TRUE if succeeded.
+
+**********************************************************************/
+BOOL
+OVS_SetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL                        bValue
+    )
+{
+    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
+    
+    if( AnscEqualString(ParamName, "Enable", TRUE))
+    {
+     MeshInfo("OVS mode set\n");
+     Mesh_SetOVS(bValue,false);
      return TRUE; 
     }
     else
