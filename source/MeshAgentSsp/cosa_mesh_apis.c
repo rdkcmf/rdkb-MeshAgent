@@ -275,7 +275,7 @@ static bool Mesh_PodAddress(char *mac, bool add)
   } 
   else
   {
-   MeshInfo("Send the Connect event for this client as normal client: %s\n");
+   MeshInfo("Send the Connect event for this client as normal client: %s\n", mac);
   }
   
   return FALSE;
