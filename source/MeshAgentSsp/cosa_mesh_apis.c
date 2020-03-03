@@ -1610,7 +1610,6 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     int outbufsz = sizeof(out_val);
     int i = 0;
     FILE *cmd=NULL;
-    FILE *encrypted_file=NULL;
     char mesh_enable[16];
 
     PCOSA_DATAMODEL_MESHAGENT pMyObject = (PCOSA_DATAMODEL_MESHAGENT) hThisObject;
@@ -1686,12 +1685,13 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         }
         if(i==5) {
          MeshInfo("All retrial failed for syscfg get , try reading from syscfg.db before applying default\n");
-         cmd = popen("grep \"mesh_enable\" /nvram/syscfg.db | cut -d \"=\" -f2","r"); 
-         encrypted_file = popen("grep \"mesh_enable\" /opt/secure/data/syscfg.db | cut -d \"=\" -f2","r"); 
-        if((cmd==NULL) || (encrypted_file==NULL))
-        {
-         MeshInfo("Error opening syscfg.db file, do final attempt for recovery\n");
-         Mesh_Recovery();
+         cmd=popen("grep \"mesh_enable\" /nvram/syscfg.db | cut -d \"=\" -f2","r"); 
+         if (cmd==NULL) {
+             cmd=popen("grep \"mesh_enable\" /opt/secure/data/syscfg.db | cut -d \"=\" -f2","r"); 
+             if(cmd==NULL) {
+                MeshInfo("Error opening syscfg.db file, do final attempt for recovery\n");
+                Mesh_Recovery();
+             }
         }
         else
         {
@@ -1705,7 +1705,6 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
           Mesh_Recovery();
          } 
          pclose(cmd);
-         pclose(encrypted_file);
         }
        }
     } else {
