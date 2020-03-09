@@ -316,10 +316,11 @@ void Mesh_SendEthernetMac(char *mac)
   strncpy(msg.mac, mac, MAX_MAC_ADDR_LEN); 
 
   if(dnsmasqFd) { 
-   sendto(dnsmasqFd, (const char*)sendBuff, sizeof(LeaseNotify), 0, (struct sockaddr *)&dnsserverAddr, (sizeof dnsserverAddr));
+    /* Coverity Issue Fix - CID:113076 : Buffer Over Run */
+   sendto(dnsmasqFd, (const char*)sendBuff, sizeof(PodMacNotify), 0, (struct sockaddr *)&dnsserverAddr, (sizeof dnsserverAddr));
    MeshInfo("Pod mac address sent to dnsmasq MAC: %s\n", mac);
   } else
-   MeshError("Error sending Pod mac address to dnsmasq, Socket not ready MAC: %s\n", mac);
+  MeshError ("Error sending Pod mac address to dnsmasq, Socket not ready MAC: %s\n", mac);
   
   close(dnsmasqFd);
   dnsmasqFd=0;
@@ -361,7 +362,8 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
     case MESH_WIFI_RADIO_CHANNEL_MODE:
     {
         char cmd[256] = {0};
-        sprintf(cmd, "MESH|%d|%s|%s|%s",
+        /* Coverity Issue Fix - CID:124800 : Printf args*/
+        sprintf(cmd, "MESH|%d|%s|%s|%s|%s",
                 rxMsg.data.wifiRadioChannelMode.index,
                 rxMsg.data.wifiRadioChannelMode.channelMode,
                 (rxMsg.data.wifiRadioChannelMode.gOnlyFlag?"true":"false"),
@@ -535,7 +537,12 @@ static int leaseServer(void *data)
    pclose(cmd);
    
    Socket = socket(PF_INET, SOCK_DGRAM, 0);
-
+   /* Coverity Issue Fix - CID:69541 : Negative Returns */
+   if( Socket < 0 )
+   {	 
+	MeshError("%s-%d : Error in opening Socket\n" , __FUNCTION__, __LINE__);
+	return ANSC_STATUS_FAILURE;
+   }
    serverAddr.sin_family = AF_INET;
    if(!isValidIpAddress(atomIP)) {
    //Receive msgs from the dnsmasq
@@ -2297,7 +2304,7 @@ static void *Mesh_sysevent_handler(void *data)
                 if (val && val[0] != '\0')
                 {
                     const char delim[2] = "|";
-                    char *token;
+                    char *token=NULL;
                     int idx = 0;
                     bool valFound = false;
                     bool process = true;
@@ -2325,22 +2332,26 @@ static void *Mesh_sysevent_handler(void *data)
                             }
                             break;
                         case 1:
+                           
                             MeshInfo("index=%s\n", token);
                             mMsg.data.wifiAPSecurity.index = strtol(token,NULL,10);
                             valFound = true;
                             break;
                         case 2:
-                            MeshInfo("passphrase recieved\n", token);
+                             /* Coverity Issue Fix - CID:125245 : Printf Args */
+                            MeshInfo("passphrase recieved \n");
                             strncpy(mMsg.data.wifiAPSecurity.passphrase, token, sizeof(mMsg.data.wifiAPSecurity.passphrase));
                             valFound = true;
                             break;
                         case 3:
-                            MeshInfo("security mode received\n", token);
+                             /* Coverity Issue Fix - CID:125245 : Printf Args*/
+                            MeshInfo("security mode received\n");
                             strncpy(mMsg.data.wifiAPSecurity.secMode, token, sizeof(mMsg.data.wifiAPSecurity.secMode));
                             valFound = true;
                             break;
                         case 4:
-                            MeshInfo("encryption mode recieved\n", token);
+                             /* Coverity Issue Fix - CID:125245  : Printf Args*/
+                            MeshInfo("encryption mode recieved\n");
                             strncpy(mMsg.data.wifiAPSecurity.encryptMode, token, sizeof(mMsg.data.wifiAPSecurity.encryptMode));
                             valFound = true;
                             break;
@@ -2691,7 +2702,8 @@ static void *Mesh_sysevent_handler(void *data)
                         // Mesh Full
                         // Ok, if Plume told us that they are in full mode, we should send them the list of connected devices
                         ClientTableIter iter;
-                        eMeshIfaceType iface;
+                        /* Coverity Issue Fix - CID:72175 : UnInitialised Variable*/
+                        eMeshIfaceType iface = MESH_IFACE_NONE;
                         char *mac;
                         char *host;
 
@@ -3010,7 +3022,7 @@ void Mesh_InitClientList()
             const char delim[3] = "|\n";
             char mac[MAX_MAC_ADDR_LEN] = {0};
             char host[MAX_HOSTNAME_LEN] = {0};
-            eMeshIfaceType iface;
+            eMeshIfaceType iface = MESH_IFACE_NONE;
 
             token = strtok(val, delim);
             while (token != NULL)
@@ -3120,8 +3132,9 @@ int Mesh_Init(ANSC_HANDLE hThisObject)
     {
         MeshInfo("leaseServer thread created successfully\n");
 
-        memset( thread_name, '\0', sizeof(char) * THREAD_NAME_LEN );
-        strcpy( thread_name, "Mesh_leaseServer");
+        //memset( thread_name, '\0', sizeof(char) * THREAD_NAME_LEN );
+        /* Coverity Issue Fix - CID:59614 */
+        strcpy( thread_name, "MeshLeaseServer");
 
         if (pthread_setname_np(lease_server_tid, thread_name) == 0)
         {

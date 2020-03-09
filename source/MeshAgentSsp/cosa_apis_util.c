@@ -47,10 +47,11 @@ const char *svcagt_systemctl_cmd = "systemctl";
  **************************************************************************/
 int Mesh_SyseventGetInt(const char *name)
 {
-   unsigned char out_value[20];
-   int outbufsz = sizeof(out_value);
-
-   sysevent_get(sysevent_fd_gs, sysevent_token_gs, name, out_value,outbufsz);
+  
+   /* Coverity Issue Fix - CID:72888  : UnInitialised Variable */  
+   unsigned char out_value[20] = {0};
+   
+   sysevent_get(sysevent_fd_gs, sysevent_token_gs, name, out_value,sizeof(out_value));
    if(out_value[0] != '\0')
    {
       return atoi(out_value);
@@ -70,9 +71,8 @@ int Mesh_SyseventGetInt(const char *name)
  **************************************************************************/
 int Mesh_SyseventSetInt(const char *name, int int_value)
 {
-   unsigned char value[20];
+   unsigned char value[20] = {0};
    sprintf(value, "%d", int_value);
-
    return sysevent_set(sysevent_fd_gs, sysevent_token_gs, name, value, sizeof(value));
 }
 
@@ -143,10 +143,9 @@ int Mesh_SyseventSetStr(const char *name, unsigned char *value, int bufsz, bool 
  **************************************************************************/
 int Mesh_SysCfgGetInt(const char *name)
 {
-   unsigned char out_value[20];
-   int outbufsz = sizeof(out_value);
-
-   if (!syscfg_get(NULL, name, out_value, outbufsz))
+   unsigned char out_value[20] = {0};
+   
+   if (!syscfg_get(NULL, name, out_value, sizeof(out_value)))
    {
       return atoi(out_value);
    }
@@ -165,7 +164,8 @@ int Mesh_SysCfgGetInt(const char *name)
  **************************************************************************/
 int Mesh_SysCfgSetInt(const char *name, int int_value)
 {
-   unsigned char value[20];
+   unsigned char value[20] = {0};
+   
    int retval=0;
    sprintf(value, "%d", int_value);
    if ((retval = syscfg_set(NULL, name, value)) == 0)
@@ -193,7 +193,7 @@ int Mesh_SysCfgSetStr(const char *name, unsigned char *str_value, bool toArm)
     {
         // Send event to ARM
         #define DATA_SIZE 1024
-        FILE *fp1;
+        FILE *fp1 = NULL;
         char buf[DATA_SIZE] = {0};
         char cmd1[DATA_SIZE] = {0};
         char cmd2[DATA_SIZE] = {0};
@@ -231,8 +231,7 @@ int svcagt_get_service_state (const char *svc_name)
 {
 	int exit_code;
 	bool running;
-	char cmdbuf[128];
-
+	char cmdbuf[128] = {0};
 	sprintf (cmdbuf, "%s is-active %s.service", svcagt_systemctl_cmd, svc_name);
 	exit_code = system (cmdbuf);
 	if (exit_code == -1) {
@@ -247,9 +246,9 @@ int svcagt_get_service_state (const char *svc_name)
 int svcagt_set_service_state (const char *svc_name, bool state)
 {
 	int exit_code = 0;
-	char cmdbuf[128];
-	const char *start_stop_msg;
-	const char *cmd_option;
+	char cmdbuf[128] = {0};
+	const char *start_stop_msg = NULL;
+	const char *cmd_option = NULL;
 
 	if (state) {
 		start_stop_msg = "Starting";
