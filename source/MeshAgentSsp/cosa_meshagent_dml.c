@@ -593,8 +593,9 @@ MeshAgent_Validate
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
 
     if(!strlen(pMyObject->meshUrl))
-    {
-        MeshInfo("Url String is Empty \n", __FUNCTION__);
+    {  
+    	/* Coverity Issue Fix - CID:125155 : Printf Args */
+        MeshInfo("%s - Url String is Empty \n", __FUNCTION__);
         AnscCopyString(pReturnParamName, "Url is empty");
         return FALSE;
     }
