@@ -1959,7 +1959,9 @@ static void *Mesh_sysevent_handler(void *data)
     async_id_t mesh_enable_asyncid;
     async_id_t mesh_url_asyncid;
     async_id_t wifi_txRate_asyncid;
-
+#ifdef _PLATFORM_TURRIS_
+    async_id_t lease_resync_asyncid;
+#endif
     sysevent_set_options(sysevent_fd,     sysevent_token, meshSyncMsgArr[MESH_WIFI_RESET].sysStr,                     TUPLE_FLAG_EVENT);
     sysevent_setnotification(sysevent_fd, sysevent_token, meshSyncMsgArr[MESH_WIFI_RESET].sysStr,                     &wifi_init_asyncid);
     sysevent_set_options(sysevent_fd,     sysevent_token, meshSyncMsgArr[MESH_WIFI_SSID_NAME].sysStr,                 TUPLE_FLAG_EVENT);
@@ -2000,6 +2002,10 @@ static void *Mesh_sysevent_handler(void *data)
     sysevent_set_options(sysevent_fd,     sysevent_token, meshSyncMsgArr[MESH_WIFI_TXRATE].sysStr,                   TUPLE_FLAG_EVENT);
     sysevent_setnotification(sysevent_fd, sysevent_token, meshSyncMsgArr[MESH_WIFI_TXRATE].sysStr,                   &wifi_txRate_asyncid);
 
+#ifdef _PLATFORM_TURRIS_
+    sysevent_set_options(sysevent_fd,     sysevent_token, meshSyncMsgArr[MESH_DHCP_RESYNC_LEASES].sysStr,                   TUPLE_FLAG_EVENT);
+    sysevent_setnotification(sysevent_fd, sysevent_token, meshSyncMsgArr[MESH_DHCP_RESYNC_LEASES].sysStr,                   &lease_resync_asyncid);
+#endif
 
     for (;;)
     {
@@ -2988,6 +2994,13 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
+#ifdef _PLATFORM_TURRIS_
+            else if (strcmp(name, meshSyncMsgArr[MESH_DHCP_RESYNC_LEASES].sysStr)==0)
+            {
+                //This will handle sending lease information to plume for every new connection, without restarting the MeshAgent
+                Mesh_sendDhcpLeaseSync();
+            }
+#endif
             else
             {
                 MeshWarning("undefined event %s \n",name);
