@@ -236,8 +236,10 @@ eMeshWifiStatusType Mesh_WifiStatusLookup(char *status)
 
 bool isValidIpAddress(char *ipAddress)
 {
-    struct sockaddr_in sa;
-    int result = inet_pton(AF_INET, ipAddress, &(sa.sin_addr));
+    struct sockaddr_in sa = {0};
+    char ip[13] = {0};
+    strncpy(ip, ipAddress, sizeof(ip));
+    int result = inet_pton(AF_INET, ip, &(sa.sin_addr));
     return result != 0;
 }
 
@@ -330,6 +332,16 @@ void Mesh_SendEthernetMac(char *mac)
  }
 
   return 1;
+}
+
+static void Mesh_SendPodAddresses()
+{
+ int i=0;
+ for(i =0; i <= eth_mac_count; i++)
+ {
+  MeshInfo("Send pod address %s to dnsmasq %s\n", EthPodMacs[i], __FUNCTION__);
+  Mesh_SendEthernetMac( EthPodMacs[i]);
+ }
 }
 
 /**
@@ -523,9 +535,9 @@ static int leaseServer(void *data)
    struct sockaddr_in serverAddr;
    struct sockaddr_storage serverStorage;
    socklen_t addr_size;
-   char atomIP[32];
+   char atomIP[32] = {0};
    int msgType = 0;
-   FILE *cmd;
+   FILE *cmd = NULL;
    bool gdoNtohl;
 
    cmd = popen("grep \"ATOM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
@@ -571,17 +583,24 @@ static int leaseServer(void *data)
      else
       msgType = (int)(rxBuf.msgType);
       
-     if(clientSocketsMask && msgType > POD_ETH_BHAUL)
+     if(clientSocketsMask && msgType > POD_MAC_POLL)
       Mesh_sendDhcpLeaseUpdate( msgType, rxBuf.lease.mac, rxBuf.lease.ipaddr, rxBuf.lease.hostname, rxBuf.lease.fingerprint);
      else if( msgType == POD_XHS_PORT)
       MeshWarning("Pod is connected on XHS ethernet Port, Unplug and plug in to different one\n");
      else if( msgType == POD_ETH_PORT)
       MeshWarning("Pod is non operational on ethernet port while Ethernet bhaul feature is not enabled\n");
-     else
+     else if( msgType == POD_ETH_BHAUL)
      {
-      MeshWarning("Pod link change detected\n");
+      MeshInfo("Pod link change detected\n");
       Mesh_logLinkChange();
-     } 
+     }
+     else if( msgType == POD_MAC_POLL)
+     {
+      MeshInfo("Dnsmasq sent poll to retrieve pod mac addresses\n");
+      Mesh_SendPodAddresses(); 
+     }
+     else
+      MeshError("%s : Unknown Msg = %d\n", __FUNCTION__, msgType); 
     }
      
    return 0;
