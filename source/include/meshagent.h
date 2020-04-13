@@ -40,7 +40,8 @@
 typedef enum {
   POD_XHS_PORT=0,
   POD_ETH_PORT,
-  POD_ETH_BHAUL
+  POD_ETH_BHAUL,
+  POD_MAC_POLL
 } detectionMsg;
 
 /**
