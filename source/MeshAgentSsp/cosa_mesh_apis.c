@@ -51,9 +51,6 @@
 #include "mesh_client_table.h"
 #include "ssp_global.h"
 
-// TELEMETRY 2.0 //RDKB-26019
-#include <telemetry_busmessage_sender.h>
-
 /**************************************************************************/
 /*      LOCAL VARIABLES:                                                  */
 /**************************************************************************/
@@ -1207,7 +1204,6 @@ BOOL is_reset_needed()
     if(valStructs && ((strncmp("true", valStructs[0]->parameterValue,4)==0) || (strncmp("true", valStructs[1]->parameterValue,4)==0)))
     {
         MeshInfo("Mesh interfaces are up, Need to disable them\n");
-        t2_event_d("WIFI_INFO_MeshDisabled_syscfg0", 1);
         ret_b=(valStructs?true:false);
     }
 
@@ -1306,11 +1302,6 @@ BOOL radio_check()
      MeshWarning("valStructs[0]->parameterValue = %s valStructs[1]->parameterValue = %s \n",valStructs[0]->parameterValue,valStructs[1]->parameterValue);
 
     free_parameterValStruct_t(bus_handle, valNum, valStructs);
-    if(!ret_b) {
-      MeshError(("MESH_ERROR:Fail to enable Mesh because either one of the radios are off\n"));
-      t2_event_d("WIFI_ERROR_MESH_FAILED", 1);      
-    }
-    
     return ret_b;
 }
 
@@ -1389,10 +1380,8 @@ void meshSetSyscfg(bool enable)
            MeshInfo("syscfg set passed in %d attempt\n", i+1);
            break;
          }
-         else{
+         else
           MeshInfo("syscfg set retrial failed in %d attempt\n", i+1);
-          t2_event_d("SYS_ERROR_SyscfgSet_retry_failed",  1); 
-         }
       }
    }
    else
@@ -1478,7 +1467,6 @@ static void handleMeshEnable(void *Args)
                 if ((err = svcagt_set_service_state(meshServiceName, true)) != 0)
                 {
                     MeshError("meshwifi service failed to run, igonoring the mesh enablement\n");
-		    t2_event_d("WIFI_ERROR_meshwifiservice_failure", 1); 
                     meshSetSyscfg(0);
                     success = FALSE;
                 }
@@ -1512,9 +1500,6 @@ static void handleMeshEnable(void *Args)
             Mesh_SyseventSetStr(meshSyncMsgArr[MESH_WIFI_STATUS].sysStr, outBuf, 0, true);
         } else {
             MeshError("Error %d %s Mesh Wifi\n", err, (enable?"enabling":"disabling"));
-            if ((err == 0x100) && (enable == TRUE)) {
-            	t2_event_d("SYS_INFO_MESHWIFI_DISABLED", 1);
-	    }
         }
    return NULL;
 }
@@ -1685,7 +1670,6 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         {
           if(!Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, out_val, outbufsz)) {
             MeshInfo("Syscfg get passed in %d retrial\n", i+1);
-            t2_event_d("SYS_INFO_SYSCFG_get_passed",  1);
             if (strncmp(out_val, "true", 4) == 0) {
               Mesh_SetEnabled(true, true);
              } else if (strncmp(out_val, "false", 5) == 0) {
@@ -1701,13 +1685,11 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         }
         if(i==5) {
          MeshInfo("All retrial failed for syscfg get , try reading from syscfg.db before applying default\n");
-         t2_event_d("SYS_ERROR_SyscfgGet_retry_failed", 1);
          cmd=popen("grep \"mesh_enable\" /nvram/syscfg.db | cut -d \"=\" -f2","r"); 
          if (cmd==NULL) {
              cmd=popen("grep \"mesh_enable\" /opt/secure/data/syscfg.db | cut -d \"=\" -f2","r"); 
              if(cmd==NULL) {
                 MeshInfo("Error opening syscfg.db file, do final attempt for recovery\n");
-         	t2_event_d("SYS_ERROR_SYSCFG_Open_failed", 1);
                 Mesh_Recovery();
              }
         }
@@ -1720,7 +1702,6 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
          else
          {
           MeshInfo("mesh_enable returned null from syscfg.db final attempt for recovery\n");
-          t2_event_d("SYS_ERROR_ApplyDefaut_MeshStatus", 1); 
           Mesh_Recovery();
          } 
          pclose(cmd);
@@ -2695,9 +2676,6 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 1:
                             MeshInfo("mesh_status=%s\n", token);
-                            if (strncmp(token, "Init", strlen("Init")) == 0) {
-				t2_event_d("WIFI_INFO_MeshInit", 1);
-  			    }
                             status = Mesh_WifiStatusLookup(token);
                             valFound = true;
                             break;
