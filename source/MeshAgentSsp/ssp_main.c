@@ -37,6 +37,7 @@
 #include "ccsp_dm_api.h"
 #include "meshagent.h"
 #include "ccsp_custom_logs.h"
+#include "safec_lib_common.h"
 
 /*----------------------------------------------------------------------------*/
 /*                                   Macros                                   */
@@ -124,6 +125,7 @@ int msgBusInit(const char *pComponentName)
     extern ANSC_HANDLE bus_handle;
     char *subSys            = NULL;  
     DmErr_t    err;
+    errno_t rc = -1;
 
 	gpMeshAgentCfg = (PCCSP_COMPONENT_CFG)AnscAllocateMemory(sizeof(CCSP_COMPONENT_CFG));
     if (gpMeshAgentCfg)
@@ -140,7 +142,12 @@ int msgBusInit(const char *pComponentName)
     pComponentName = gpMeshAgentCfg->ComponentName;
     MeshInfo("[MeshAgent] msgBusInit called with %s\n", pComponentName);
 
-    AnscCopyString(g_Subsystem, "eRT.");
+    rc = strcpy_s(g_Subsystem,sizeof(g_Subsystem),"eRT.");
+    if(rc != EOK)
+    {
+	ERR_CHK(rc);
+	return 1;
+    }
 
     if ( bRunAsDaemon ) 
         daemonize();
@@ -248,6 +255,7 @@ int CheckAndGetDevicePropertiesEntry( char *pOutput, int size, char *sDeviceProp
     char     buf[ 1024 ] = { 0 },
             *urlPtr      = NULL;
     int      ret         = -1;
+    errno_t rc = -1;
 
     // Read the device.properties file
     fp1 = fopen( "/etc/device.properties", "r" );
@@ -269,11 +277,15 @@ int CheckAndGetDevicePropertiesEntry( char *pOutput, int size, char *sDeviceProp
             urlPtr = strstr( buf, "=" );
             urlPtr++;
 
-            strncpy( pOutput, urlPtr, size );
-
-          ret=0;
-
-          break;
+            rc = strncpy_s(pOutput, size, urlPtr,size);
+            if(rc != EOK)
+            {
+                ERR_CHK(rc);
+                return -1;
+            }
+	    
+	    ret=0;
+            break;
         }
     }
 
@@ -285,6 +297,9 @@ void Cosa_print_uptime_meshagent( void  )
 {
     char acBoxType[ 16 ] = { 0 };
     char buf[256] = {0};
+    errno_t rc       = -1;
+    int     ind      = -1;
+    
     pthread_detach(pthread_self());
     // Get BOX TYPE from device properties
     if( 0 == CheckAndGetDevicePropertiesEntry( acBoxType, sizeof( acBoxType ),"BOX_TYPE" ) )
@@ -293,22 +308,25 @@ void Cosa_print_uptime_meshagent( void  )
 
         // If it is XB3 then we need to do RPC client operation to do further
         // If it is non-XB3 then we need to do operation here itself
-        if( ( acBoxType[ 0 ] != '\0' ) && \
-            ( 0 == strcmp( acBoxType, "XB3" ) )
-          )
-        {
-            char acArmArpingIP[ 64 ] = { 0 };
 
-            if( 0 == CheckAndGetDevicePropertiesEntry( acArmArpingIP, sizeof( acArmArpingIP ),"ARM_ARPING_IP" ) )
+        if( ( acBoxType[ 0 ] != '\0' ) )
+        {
+            rc = strcmp_s("XB3", strlen("XB3"), acBoxType , &ind);
+            ERR_CHK(rc); 
+            if((ind  == 0) && (rc == EOK))
             {
-                if ( acArmArpingIP[ 0 ] != '\0' )
+                char acArmArpingIP[ 64 ] = { 0 };
+                if( 0 == CheckAndGetDevicePropertiesEntry( acArmArpingIP, sizeof( acArmArpingIP ),"ARM_ARPING_IP" ) )
                 {
-                    CcspTraceInfo(("%s Reported an ARM IP of %s \n", __FUNCTION__, acArmArpingIP));
-                    _ansc_sprintf(buf, "/usr/bin/rpcclient %s \"print_uptime boot_to_meshagent_uptime\"", acArmArpingIP);
-                    system(buf);
+                    if ( acArmArpingIP[ 0 ] != '\0' )
+                    {
+                        CcspTraceInfo(("%s Reported an ARM IP of %s \n", __FUNCTION__, acArmArpingIP));
+                        _ansc_sprintf(buf, "/usr/bin/rpcclient %s \"print_uptime boot_to_meshagent_uptime\"", acArmArpingIP);
+                        system(buf);
+                    }
                 }
-            }
-        }
+	    }
+	}
         else
         {
             system("print_uptime \"boot_to_meshagent_uptime\"");

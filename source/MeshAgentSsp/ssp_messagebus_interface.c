@@ -25,6 +25,7 @@
 */
 #include "ssp_global.h"
 #include "meshagent.h"
+#include "safec_lib_common.h"
 
 ANSC_HANDLE                 bus_handle               = NULL;
 extern char                 g_Subsystem[32];
@@ -65,7 +66,8 @@ ANSC_STATUS ssp_Mbi_MessageBusEngage(char * component_id,char * config_file,char
 {
     ANSC_STATUS                 returnStatus       = ANSC_STATUS_SUCCESS;
     CCSP_Base_Func_CB           cb                 = {0};
-
+    
+    errno_t rc = -1;
     if ( ! component_id || ! path )
     {
         MeshError(" !!! ssp_Mbi_MessageBusEngage: component_id or path is NULL !!!\n");
@@ -92,7 +94,13 @@ ANSC_STATUS ssp_Mbi_MessageBusEngage(char * component_id,char * config_file,char
 
    
     g_MessageBusHandle_Irep = bus_handle;
-    AnscCopyString(g_SubSysPrefix_Irep, g_Subsystem);
+ 
+    rc = strcpy_s(g_SubSysPrefix_Irep,sizeof(g_SubSysPrefix_Irep),g_Subsystem);
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+        return ANSC_STATUS_FAILURE;
+    }
 
     CCSP_Msg_SleepInMilliSeconds(1000);
 
