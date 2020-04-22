@@ -27,6 +27,8 @@
 #include "dslh_dmagnt_interface.h"
 #include "ccsp_trace.h"
 #include "meshagent.h"
+#include "safec_lib_common.h"
+
 /*----------------------------------------------------------------------------*/
 /*                               Library Objects                              */
 /*----------------------------------------------------------------------------*/
@@ -56,7 +58,7 @@ extern  ULONG                   g_ulAllocatedSizePeak;
 ANSC_STATUS ssp_create(PCCSP_COMPONENT_CFG pMeshCfg)
 {
     /* Create component common data model object */
-
+    errno_t rc = -1;
      g_pComponent_COMMON = (PCOMPONENT_COMMON)AnscAllocateMemory(sizeof(COMPONENT_COMMON));
 
     if ( ! g_pComponent_COMMON )
@@ -85,8 +87,12 @@ ANSC_STATUS ssp_create(PCCSP_COMPONENT_CFG pMeshCfg)
         }
         else
         {
-            AnscCopyString(pSsdCcdIf->Name, CCSP_CCD_INTERFACE_NAME);
-
+            rc = strcpy_s(pSsdCcdIf->Name,sizeof(pSsdCcdIf->Name),CCSP_CCD_INTERFACE_NAME);
+            if(rc != EOK)
+	    {
+		ERR_CHK(rc);
+		return ANSC_STATUS_FAILURE;
+	    }
             pSsdCcdIf->InterfaceId              = CCSP_CCD_INTERFACE_ID;
             pSsdCcdIf->hOwnerContext            = NULL;
             pSsdCcdIf->Size                     = sizeof(CCSP_CCD_INTERFACE);
@@ -120,7 +126,13 @@ ANSC_STATUS ssp_create(PCCSP_COMPONENT_CFG pMeshCfg)
         }
         else
         {
-            AnscCopyString(pDslhLcbIf->Name, CCSP_LIBCBK_INTERFACE_NAME);
+            rc = strcpy_s(pDslhLcbIf->Name,sizeof(pDslhLcbIf->Name),CCSP_LIBCBK_INTERFACE_NAME);
+	    if(rc != EOK)
+            {
+                ERR_CHK(rc);
+                return ANSC_STATUS_FAILURE;
+            }
+ 
 
             pDslhLcbIf->InterfaceId              = CCSP_LIBCBK_INTERFACE_ID;
             pDslhLcbIf->hOwnerContext            = NULL;

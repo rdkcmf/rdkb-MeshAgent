@@ -24,6 +24,7 @@
 #include <string.h>
 #include "mesh_client_table.h"
 #include "meshagent.h"
+#include "safec_lib_common.h"
 
 /*
  * @file mesh_client_table.c
@@ -104,18 +105,23 @@ unsigned int HashMe(eMeshIfaceType iface, char *mac)
     const char s[2] = ":";
     char hashStr[MAX_MAC_ADDR_LEN] = {0};
     char *token;
+    errno_t rc = -1;
 
     // Copy over the string so we don't mess it up.
-    strncpy(hashStr, mac, sizeof(hashStr)-1);
-
+    rc = strncpy_s(hashStr , sizeof(hashStr), mac, sizeof(hashStr)-1);
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+    }
+    
     /* get the first token */
     token = strtok(hashStr, s);
 
     /* walk through other tokens */
     while( token != NULL )
     {
-       hashIdx += (int)strtol(token, NULL, 16);
-       token = strtok(NULL, s);
+        hashIdx += (int)strtol(token, NULL, 16);
+        token = strtok(NULL, s);
     }
 
     return (hashIdx%MAX_NUMBER_HASH_BUCKETS);
@@ -127,8 +133,10 @@ unsigned int HashMe(eMeshIfaceType iface, char *mac)
  */
 bool HashFree(HashItem *item)
 {
+    errno_t rc = -1;
     if (item) {
-        memset(item, 0, sizeof(HashItem)); // clear out the item
+        rc = memset_s(item, sizeof(HashItem), 0, sizeof(HashItem));
+        ERR_CHK(rc);        
     }
 
     return true;
@@ -160,11 +168,19 @@ HashItem *HashFind(eMeshIfaceType iface, char *mac)
 {
     int index = HashMe(iface, mac);
     HashItem *item = hashTable[index].head;
+    errno_t rc       = -1;
+    int     ind      = -1;
 
     while (item != NULL) {
-        if (item->client.iface == iface && strcmp(item->client.mac, mac) == 0) {
-            // Found the item!
-            break;
+        if (item->client.iface == iface)
+        {
+            rc = strcmp_s(mac, MAX_MAC_ADDR_LEN, item->client.mac , &ind);
+            ERR_CHK(rc);
+            if((ind  == 0) && (rc == EOK))
+            {
+                // Found the item!
+                break;
+            }
         }
         item = item->next;
     }
@@ -177,6 +193,7 @@ HashItem *HashFind(eMeshIfaceType iface, char *mac)
 bool HashAdd(eMeshIfaceType iface, char *mac, char *host)
 {
     bool success = false;
+    errno_t rc = -1;
 
     // add client connection if it isn't already there
     if (HashFind(iface, mac) == NULL) {
@@ -187,10 +204,20 @@ bool HashAdd(eMeshIfaceType iface, char *mac, char *host)
             // Copy data into the has entry
             newItem->client.iface = iface;
             if (mac != NULL) {
-                strncpy(newItem->client.mac, mac, sizeof(newItem->client.mac)-1);
+                rc = strncpy_s(newItem->client.mac, sizeof(newItem->client.mac),mac, sizeof(newItem->client.mac)-1);
+                if(rc != EOK)
+		{
+		    ERR_CHK(rc);
+		    success = false;
+		}
             }
             if (host != NULL) {
-                strncpy(newItem->client.host, host, sizeof(newItem->client.host)-1);
+                rc = strncpy_s(newItem->client.host, sizeof(newItem->client.host), host,sizeof(newItem->client.host)-1);
+		if(rc != EOK)
+                {
+                    ERR_CHK(rc);
+                    success = false;
+                }
             }
             // Now find our place in the hash bucket
             HashItem *pItem = hashTable[idx].head;
@@ -224,6 +251,8 @@ bool HashAdd(eMeshIfaceType iface, char *mac, char *host)
 bool HashDelete(eMeshIfaceType iface, char *mac)
 {
     bool success = false;
+    errno_t rc       = -1;
+    int     ind      = -1;
 
     if (HashFind(iface, mac) != NULL) {
         // lookup entry in hash buckets
@@ -233,9 +262,19 @@ bool HashDelete(eMeshIfaceType iface, char *mac)
         HashItem *nextItem = hashTable[idx].head;
         HashItem *prevItem = nextItem;
 
-        while (nextItem->client.iface != iface && strcmp(nextItem->client.mac, mac) != 0) {
-            prevItem = nextItem;
-            nextItem = nextItem->next;
+        while (nextItem->client.iface != iface)
+        {
+            rc = strcmp_s(mac, MAX_MAC_ADDR_LEN, nextItem->client.mac, &ind);
+            ERR_CHK(rc);
+            if((ind  != 0) && (rc == EOK)) 
+            {
+                prevItem = nextItem;
+                nextItem = nextItem->next;
+            }
+	    else
+	    {
+                break;
+	    }
         }
 
         if (nextItem == hashTable[idx].head) {

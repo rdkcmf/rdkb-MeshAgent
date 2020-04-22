@@ -25,7 +25,7 @@
 #include "ssp_global.h"
 #include "syslog.h"
 #include "ccsp_trace.h"
-
+#include "safec_lib_common.h"
 
 #define DEBUG_INI_NAME  "/etc/debug.ini"
 
@@ -159,21 +159,30 @@ MeshAgent_GetParamBoolValue
         BOOL*                       pBool
     )
 {
+    errno_t        rc = -1;
+    int            ind = -1;
     /* check the parameter name and return the corresponding value */
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
-    if( AnscEqualString(ParamName, "Enable", TRUE))
+    rc = strcmp_s("Enable",strlen("Enable"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
         *pBool = g_pMeshAgent->meshEnable;
         return TRUE;
     }
-    else if( AnscEqualString(ParamName, "PodEthernetBackhaulEnable", TRUE))
+    else 
     {
-     MeshInfo("Pod ethernet bhaul mode get\n");
-     *pBool = g_pMeshAgent->PodEthernetBackhaulEnable;
-     return TRUE; 
+        rc = strcmp_s("PodEthernetBackhaulEnable",strlen("PodEthernetBackhaulEnable"),ParamName,&ind);
+        ERR_CHK(rc);
+        if( (ind == 0) && (rc == EOK))
+        {
+            MeshInfo("Pod ethernet bhaul mode get\n");
+            *pBool = g_pMeshAgent->PodEthernetBackhaulEnable;
+            return TRUE; 
+        }
+        else
+            MeshWarning(("Unsupported parameter '%s'\n", ParamName));
     }
-    else
-     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
     return FALSE;
 }
 
@@ -215,9 +224,13 @@ OVS_GetParamBoolValue
         BOOL*                       pBool
     )
 {
+    errno_t rc = -1;
+    int ind = -1;
     /* check the parameter name and return the corresponding value */
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
-    if( AnscEqualString(ParamName, "Enable", TRUE))
+    rc = strcmp_s("Enable",strlen("Enable"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
         *pBool = g_pMeshAgent->OvsEnable;
         return TRUE;
@@ -274,16 +287,26 @@ MeshAgent_GetParamStringValue
         ULONG*                      pUlSize
     )
 {
+    errno_t rc = -1;
+    int ind = -1;
     /* check the parameter name and return the corresponding value */
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
-	
-	if( AnscEqualString(ParamName, "URL", TRUE))
+        rc = strcmp_s("URL",strlen("URL"),ParamName,&ind);
+        ERR_CHK(rc);
+        if( (ind == 0) && (rc == EOK))
 	{
-	    AnscCopyString(pValue, g_pMeshAgent->meshUrl);
+            rc = strcpy_s(pValue, *pUlSize, g_pMeshAgent->meshUrl);
+            if(rc != EOK)
+	    {
+	        ERR_CHK(rc);
+		return -1;
+	    }
 	    return 0;
 	}
 	
-    if( AnscEqualString(ParamName, "X_RDKCENTRAL-COM_Connected-Client", TRUE))
+    rc = strcmp_s("X_RDKCENTRAL-COM_Connected-Client",strlen("X_RDKCENTRAL-COM_Connected-Client"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
        // trap the value but don't return anything.
        return 0;
@@ -331,13 +354,19 @@ MeshAgent_GetParamUlongValue
         ULONG*                      puLong
     )
 {
-    if( AnscEqualString(ParamName, "Status", TRUE))
+    errno_t rc = -1;
+    int ind = -1;
+    rc = strcmp_s("Status",strlen("Status"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
         *puLong = g_pMeshAgent->meshStatus;
         return TRUE;
     }
 
-    if( AnscEqualString(ParamName, "State", TRUE))
+    rc = strcmp_s("State",strlen("State"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
         *puLong = g_pMeshAgent->meshState;
         return TRUE;
@@ -389,19 +418,42 @@ MeshAgent_SetParamBoolValue
         BOOL                        bValue
     )
 {
-
     /* check the parameter name and return the corresponding value */
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     char rdk_dcs[2][128];
     char vendor_dcs[2][128];
     int i=0;
+    errno_t rc = -1;
+    int ind = -1;
 
-    strncpy(rdk_dcs[0], "Device.WiFi.Radio.1.X_RDKCENTRAL-COM_DCSEnable", 128);
-    strncpy(rdk_dcs[1], "Device.WiFi.Radio.2.X_RDKCENTRAL-COM_DCSEnable", 128);
-    strncpy(vendor_dcs[0], "Device.WiFi.Radio.1.X_COMCAST-COM_DCSEnable", 128);
-    strncpy(vendor_dcs[1], "Device.WiFi.Radio.2.X_COMCAST-COM_DCSEnable", 128);
-
-    if( AnscEqualString(ParamName, "Enable", TRUE))
+	rc = strcpy_s(rdk_dcs[0],sizeof(rdk_dcs[0]),"Device.WiFi.Radio.1.X_RDKCENTRAL-COM_DCSEnable");
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+        return FALSE;
+    }
+	rc = strcpy_s(rdk_dcs[1],sizeof(rdk_dcs[1]),"Device.WiFi.Radio.2.X_RDKCENTRAL-COM_DCSEnable");
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+        return FALSE;
+    }
+	rc = strcpy_s(vendor_dcs[0],sizeof(vendor_dcs[0]),"Device.WiFi.Radio.1.X_COMCAST-COM_DCSEnable");
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+        return FALSE;
+    }
+	rc = strcpy_s(vendor_dcs[1],sizeof(vendor_dcs[1]),"Device.WiFi.Radio.2.X_COMCAST-COM_DCSEnable");
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+        return FALSE;
+    }
+	
+    rc = strcmp_s("Enable",strlen("Enable"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
 	 if( TRUE == bValue )
          {
@@ -439,14 +491,19 @@ MeshAgent_SetParamBoolValue
         Mesh_SetEnabled(bValue, false);
         return TRUE;
     }
-    else if( AnscEqualString(ParamName, "PodEthernetBackhaulEnable", TRUE))
-    {
-     MeshInfo("Pod ethernet bhaul mode set\n");
-     Mesh_SetMeshEthBhaul(bValue,false);
-     return TRUE; 
-    }
     else
-     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    {
+        rc = strcmp_s("PodEthernetBackhaulEnable",strlen("PodEthernetBackhaulEnable"),ParamName,&ind);
+        ERR_CHK(rc);
+        if( (ind == 0) && (rc == EOK))
+        {
+            MeshInfo("Pod ethernet bhaul mode set\n");
+            Mesh_SetMeshEthBhaul(bValue,false);
+            return TRUE; 
+        }    
+        else
+            MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    }
     return FALSE;
 }
 
@@ -488,9 +545,13 @@ OVS_SetParamBoolValue
         BOOL                        bValue
     )
 {
+    errno_t rc = -1;
+    int ind = -1;
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     
-    if( AnscEqualString(ParamName, "Enable", TRUE))
+    rc = strcmp_s("Enable",strlen("Enable"), ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
      MeshInfo("OVS mode set\n");
      Mesh_SetOVS(bValue,false);
@@ -539,10 +600,13 @@ MeshAgent_SetParamUlongValue
         ULONG                       puLong
     )
 {
-
+    errno_t rc = -1;
+    int ind = -1;
     /* check the parameter name and return the corresponding value */
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
-    if( AnscEqualString(ParamName, "State", TRUE))
+    rc = strcmp_s("State", strlen("State"), ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))    
     {
         // Make sure the value is valid
         if (puLong >= MESH_STATE_FULL && puLong < MESH_STATE_TOTAL) {
@@ -597,14 +661,20 @@ MeshAgent_SetParamStringValue
 {
     /* check the parameter name and return the corresponding value */
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
+    errno_t rc = -1;
+    int ind = -1;
 
-    if( AnscEqualString(ParamName, "URL", TRUE))
+    rc = strcmp_s("URL",strlen("URL"), ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK)) 
     {
         Mesh_SetUrl(pString, false);
         return TRUE;
     }
 
-    if( AnscEqualString(ParamName, "X_RDKCENTRAL-COM_Connected-Client", TRUE))
+    rc = strcmp_s("X_RDKCENTRAL-COM_Connected-Client", strlen("X_RDKCENTRAL-COM_Connected-Client"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK)) 
     {
 #ifdef USE_NOTIFY_COMPONENT
         char pIface[12] = {0}; // can be "Ethernet", "WiFi", "MoCA", "Other"
@@ -624,16 +694,36 @@ MeshAgent_SetParamStringValue
         	    case 0: // Connected-Client tag
         	    	break;
         	    case 1: // Interface
-        	    	    strncpy (pIface, param, sizeof(pIface)-1);
+                        rc = strncpy_s(pIface, sizeof(pIface), param, sizeof(pIface)-1);
+                        if(rc != EOK)
+			{
+			   ERR_CHK(rc);
+			   return FALSE;
+			}
         	    	break;
         	    case 2: // Mac Address
-     	        strncpy (pMac, param, sizeof(pMac)-1);
+                        rc = strncpy_s(pMac, sizeof(pMac), param, sizeof(pMac)-1);
+                        if(rc != EOK)
+                        {
+                           ERR_CHK(rc);
+                           return FALSE;
+                        }
         	    	break;
         	    case 3: // Status
-        	    		strncpy (pStatus, param, sizeof(pStatus)-1);
+                        rc = strncpy_s(pStatus, sizeof(pStatus), param, sizeof(pStatus)-1);
+                        if(rc != EOK)
+                        {
+                           ERR_CHK(rc);
+                           return FALSE;
+                        }
         	    	break;
         	    case 4: // Hostname
-        	    		strncpy (pHost, param, sizeof(pHost)-1);
+                        rc = strncpy_s(pHost, sizeof(pHost), param, sizeof(pHost)-1);
+                        if(rc != EOK)
+                        {
+                           ERR_CHK(rc);
+                           return FALSE;
+                        }
         	    	break;
         	    default:
         	    	break;
@@ -692,13 +782,18 @@ MeshAgent_Validate
         ULONG*                      puLength
     )
 {
+    errno_t rc = -1;
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
 
     if(!strlen(pMyObject->meshUrl))
     {  
     	/* Coverity Issue Fix - CID:125155 : Printf Args */
-        MeshInfo("%s - Url String is Empty \n", __FUNCTION__);
-        AnscCopyString(pReturnParamName, "Url is empty");
+        MeshInfo("Url String is Empty \n", __FUNCTION__);
+        rc = strcpy_s(pReturnParamName, *puLength, "Url is empty");
+        if(rc != EOK)
+	{
+	    ERR_CHK(rc);
+	}
         return FALSE;
     }
 
