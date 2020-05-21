@@ -51,6 +51,7 @@
 #include "mesh_client_table.h"
 #include "ssp_global.h"
 #include "cosa_webconfig_api.h"
+#include "safec_lib_common.h"
 
 // TELEMETRY 2.0 //RDKB-26019
 #include <telemetry_busmessage_sender.h>
@@ -114,7 +115,7 @@ const char meshServiceName[] = "meshwifi";
 const char meshDevFile[] = "/nvram/mesh-dev.flag";
 pthread_mutex_t mesh_handler_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define _DEBUG 1
-const int THREAD_NAME_LEN=16; //length is restricted to 16 characters, including the terminating null byte
+#define THREAD_NAME_LEN 16 //length is restricted to 16 characters, including the terminating null byte
 
 //Prash 
 static int dnsmasqFd;
@@ -203,6 +204,33 @@ void Mesh_InitClientList();
 void changeChBandwidth( int, int);
 static char EthPodMacs[MAX_POD_COUNT][MAX_MAC_ADDR_LEN];
 static int eth_mac_count = 0;
+
+int Get_MeshSyncType(char * name ,eMeshSyncType *type_ptr)
+{
+    errno_t rc       = -1;
+    int     ind      = -1;
+    int strlength;
+    int i;
+
+    if( (name == NULL) || (type_ptr == NULL) )
+       return 0;
+
+    strlength = strlen( name );
+
+    for (i = 0; i < MESH_SYNC_MSG_TOTAL; i++) {
+
+        rc = strcmp_s(name, strlength, meshSyncMsgArr[i].sysStr, &ind);
+        ERR_CHK(rc);
+        if((ind==0) && (rc == EOK))
+        {
+            *type_ptr =  meshSyncMsgArr[i].mType ;
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
 /**
  * @brief Mesh Agent Interface lookup function
  *
@@ -211,12 +239,17 @@ static int eth_mac_count = 0;
 eMeshIfaceType Mesh_IfaceLookup(char * iface)
 {
     eMeshIfaceType ret = MESH_IFACE_OTHER;
-
+    errno_t rc       = -1;
+    int     ind      = -1;
     if (iface != NULL && iface[0] != '\0')
     {
         int i;
+        int strlength;
+        strlength = strlen( iface );
         for (i = 0; i < MESH_IFACE_TOTAL; i++) {
-            if (strcmp(meshIfaceArr[i].mStr, iface) == 0)
+            rc = strcmp_s(iface,strlength,meshIfaceArr[i].mStr,&ind);
+            ERR_CHK(rc);          
+            if((ind == 0) && (rc == EOK))
             {
                 ret = meshIfaceArr[i].mType;
                 break;
@@ -235,12 +268,18 @@ eMeshIfaceType Mesh_IfaceLookup(char * iface)
 eMeshWifiStatusType Mesh_WifiStatusLookup(char *status)
 {
     eMeshWifiStatusType ret = MESH_WIFI_STATUS_OFF;
+    errno_t rc       = -1;
+    int     ind      = -1;
 
     if (status != NULL && status[0] != '\0')
     {
         int i;
+        int strlength;
+        strlength = strlen( status );
         for (i = 0; i < MESH_WIFI_STATUS_TOTAL; i++) {
-            if (strcmp(meshWifiStatusArr[i].mStr, status) == 0)
+            rc = strcmp_s(status,strlength,meshWifiStatusArr[i].mStr,&ind);
+            ERR_CHK(rc);       
+            if((ind == 0) && (rc == EOK))
             {
                 ret = meshWifiStatusArr[i].mStatus;
                 break;
@@ -254,8 +293,22 @@ eMeshWifiStatusType Mesh_WifiStatusLookup(char *status)
 bool isValidIpAddress(char *ipAddress)
 {
     struct sockaddr_in sa = {0};
-    char ip[13] = {0};
-    strncpy(ip, ipAddress, sizeof(ip));
+    char ip[16] = {0};
+    errno_t rc = -1;
+
+    if(ipAddress == NULL)
+    {
+       MeshError("ipAddress is NULL\n");
+       return FALSE;
+    }
+
+    rc = strncpy_s(ip, sizeof(ip), ipAddress, 13);
+    if(rc != EOK)
+    {
+       ERR_CHK(rc);
+       MeshError("Error in copying ipAddress - %s\n", ipAddress);
+       return FALSE;
+    }
     int result = inet_pton(AF_INET, ip, &(sa.sin_addr));
     return result != 0;
 }
@@ -265,6 +318,7 @@ int Mesh_DnsmasqSock(void)
  if(!dnsmasqFd)
  {
   FILE *cmd;
+  errno_t rc = -1;
   char armIP[32] = {'\0'};;
   cmd = popen("grep \"ARM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
   if(cmd == NULL) {
@@ -285,7 +339,8 @@ int Mesh_DnsmasqSock(void)
    MeshInfo("Socket bind to ARM IP %s\n", armIP);
    dnsserverAddr.sin_addr.s_addr = inet_addr(armIP);
   }
-  memset(dnsserverAddr.sin_zero, '\0', sizeof dnsserverAddr.sin_zero);
+  rc = memset_s(dnsserverAddr.sin_zero, sizeof(dnsserverAddr.sin_zero), '\0', sizeof(dnsserverAddr.sin_zero));
+  ERR_CHK(rc);
   MeshInfo("Created dnsmasq socket for Eth Bhaul mac update\n");
  }
  return 1;
@@ -294,17 +349,36 @@ int Mesh_DnsmasqSock(void)
 static bool Mesh_PodAddress(char *mac, bool add)
 {
   int i;
+  errno_t rc = -1;
+  int ind = -1;
+  int strlength;
+  
+  if (mac == NULL)
+  {
+        MeshError("Error - Pod mac address is NULL\n");
+	return FALSE;
+  }
+
+  strlength = strlen( mac );
   for(i =0; i <= eth_mac_count; i++)
   {
-   if(!strncmp(EthPodMacs[i], mac, MAX_MAC_ADDR_LEN))
+   rc = strcmp_s(mac, strlength ,EthPodMacs[i] ,&ind);
+   ERR_CHK(rc);       
+   if((ind == 0) && (rc == EOK))
    {
     MeshInfo("Pod mac detected as connected client, ignore update\n");
     return TRUE;
    }
   }
-  if( add) {
+  if( add && (eth_mac_count < MAX_POD_COUNT) ) {
    MeshInfo("Adding the Ethernet pod mac in the local copy mac: %s idx: %d\n", mac, eth_mac_count);
-   strncpy(EthPodMacs[eth_mac_count], mac, MAX_MAC_ADDR_LEN);
+    rc = strcpy_s(EthPodMacs[eth_mac_count], MAX_MAC_ADDR_LEN, mac);
+   if(rc != EOK)
+   {
+      ERR_CHK(rc);
+      MeshError("Error in copying to Ethernet pod mac\n");
+      return FALSE;
+   }
    eth_mac_count++;
   } 
   else
@@ -325,6 +399,7 @@ static bool Mesh_PodAddress(char *mac, bool add)
  */
 void Mesh_SendEthernetMac(char *mac)
 {
+  errno_t rc = -1;
  if(Mesh_DnsmasqSock())
  {
   PodMacNotify msg = {0};
@@ -332,7 +407,15 @@ void Mesh_SendEthernetMac(char *mac)
  
   sendBuff = &msg;
   msg.msgType = g_pMeshAgent->PodEthernetBackhaulEnable ?  START_POD_FILTER : STOP_POD_FILTER;
-  strncpy(msg.mac, mac, MAX_MAC_ADDR_LEN); 
+  rc = strcpy_s(msg.mac, MAX_MAC_ADDR_LEN, mac);
+  if(rc != EOK)
+  {
+      ERR_CHK(rc);
+      MeshError("Error in sending the mac via socket\n");
+      close(dnsmasqFd);
+      dnsmasqFd=0;
+      return;
+  } 
 
   if(dnsmasqFd) { 
     /* Coverity Issue Fix - CID:113076 : Buffer Over Run */
@@ -352,7 +435,7 @@ void Mesh_SendEthernetMac(char *mac)
     MeshError("Socket failed in %s\n", __FUNCTION__);
  }
 
-  return 1;
+  return;
 }
 
 static void Mesh_SendPodAddresses()
@@ -541,8 +624,8 @@ static void Mesh_logLinkChange()
 {
  char cmd[256] = {0};
  int rc = -1;
+
  if (access(POD_LINK_SCRIPT, F_OK) == 0) {
-      memset( cmd, 0, sizeof(cmd));
       snprintf( cmd, sizeof(cmd), "%s &", POD_LINK_SCRIPT);
       rc = system(cmd);
       if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
@@ -561,7 +644,7 @@ static void Mesh_logLinkChange()
  */
 static int leaseServer(void *data)
 {
- 
+   errno_t rc=-1;
    int Socket, nBytes;
    LeaseNotify rxBuf;
    struct sockaddr_in serverAddr;
@@ -601,7 +684,8 @@ static int leaseServer(void *data)
    serverAddr.sin_addr.s_addr = inet_addr(atomIP);
    gdoNtohl = true;
    }
-   memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);
+   rc = memset_s(serverAddr.sin_zero, sizeof(serverAddr.sin_zero), '\0', sizeof(serverAddr.sin_zero));
+   ERR_CHK(rc);
     /* Coverity Fix CID :57846 CHECKED _RETURN */
    if( bind(Socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr)) != 0)
    {
@@ -657,6 +741,7 @@ static int msgQServer(void *data)
     int master_socket, addrlen, new_socket, activity, i, sd;
     int max_sd;
     struct sockaddr_un address;
+    errno_t rc=-1;
 
     MeshSync rxMsg = {0}; //received message
 
@@ -671,14 +756,27 @@ static int msgQServer(void *data)
     }
 
     //type of socket created
-    memset(&address, 0, sizeof(address));
+    rc = memset_s(&address, sizeof(address), 0, sizeof(address));
+    ERR_CHK(rc);
     address.sun_family = AF_UNIX;
 
     if (*meshSocketPath == '\0') {
       *address.sun_path = '\0';
-      strncpy(address.sun_path+1, meshSocketPath+1, sizeof(address.sun_path)-2);
+      rc = strcpy_s(address.sun_path+1, sizeof(address.sun_path)-1, meshSocketPath+1);
+      if(rc != EOK)
+      {
+          ERR_CHK(rc);
+          MeshError("Error in copying meshSocketPath\n");
+          return rc;
+      }
     } else {
-      strncpy(address.sun_path, meshSocketPath, sizeof(address.sun_path)-1);
+      rc = strcpy_s(address.sun_path, sizeof(address.sun_path), meshSocketPath);
+      if(rc != EOK)
+      {
+          ERR_CHK(rc);
+          MeshError("Error in copying meshSocketPath to address.sun_path\n");
+          return rc;
+      }
       unlink(meshSocketPath);
     }
 
@@ -779,7 +877,8 @@ static int msgQServer(void *data)
             if (FD_ISSET( sd , &readfds))
             {
                 // clear out the rx buffer before reading
-                memset((void *)&rxMsg, 0, sizeof(MeshSync));
+                rc = memset_s((void *)&rxMsg, sizeof(MeshSync), 0, sizeof(MeshSync));
+                ERR_CHK(rc);
 
                 //Check if it was for closing, and also read the
                 //incoming message
@@ -857,6 +956,7 @@ static int msgQServer(void *data)
     struct mq_attr qAttr, qAttr_old;
     MeshSync rxMsg = {0};
     unsigned int prio;
+    errno_t rc=-1;
 
     qAttr.mq_flags = 0;
     qAttr.mq_maxmsg = MAX_MESSAGES;
@@ -904,7 +1004,8 @@ static int msgQServer(void *data)
     for (;;)
     {
         // clear out the rx buffer before reading
-        memset((void *)&rxMsg, 0, sizeof(MeshSync));
+        rc = memset_s((void *)&rxMsg, sizeof(MeshSync), 0, sizeof(MeshSync));
+        ERR_CHK(rc);
 
         // get the oldest message with highest priority
         if (mq_receive (qd_server, (char *) &rxMsg, sizeof(MeshSync), NULL) == -1) {
@@ -975,18 +1076,29 @@ static int msgQSend(MeshSync *data)
 int Mesh_GetUrl(char *retBuf, int bufSz)
 {
     static unsigned char out_val[128];
-    int outbufsz = sizeof(out_val);
+    errno_t rc = -1;
 
     // MeshInfo("Entering into %s\n",__FUNCTION__);
 
     out_val[0]='\0';
-    if(Mesh_SysCfgGetStr("mesh_url", out_val, outbufsz) != 0)
+    if(Mesh_SysCfgGetStr("mesh_url", out_val, sizeof(out_val)) != 0)
     {
         // syscfg value is blank, send url default value
-        strncpy(out_val, urlDefault, sizeof(out_val));
+        rc = strcpy_s(out_val, sizeof(out_val), urlDefault);
+        if(rc != EOK)
+        {
+           ERR_CHK(rc);
+           MeshError("Error in copying url default value\n");
+           return false;
+        }
     }
-
-    strncpy(retBuf, out_val, bufSz);
+    rc = strcpy_s(retBuf, bufSz, out_val);
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+        MeshError("Error in copying url value\n");
+        return false;
+    }
     return true;
 }
 
@@ -998,27 +1110,40 @@ int Mesh_GetUrl(char *retBuf, int bufSz)
 bool Mesh_SetUrl(char *url, bool init)
 {
     unsigned char outBuf[128] = {0};
-    int outbufsz = sizeof(outBuf);
+    errno_t rc       = -1;
+    int     ind      = -1;
     bool success = TRUE;
 
     // MeshInfo("Entering into %s\n",__FUNCTION__);
 
-    Mesh_GetUrl(outBuf, outbufsz);
+    Mesh_GetUrl(outBuf, sizeof(outBuf));
     // If the url value is different, set the syscfg value and notify the mesh vendor
-    if (init || strcmp(outBuf, url) != 0)
+    rc = strcmp_s(url,strlen(url),outBuf,&ind);
+    ERR_CHK(rc);
+    if (init || ((rc == EOK) && (ind != 0)))
     {
         PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
         // Update the data model
-        strncpy(g_pMeshAgent->meshUrl, url, sizeof(g_pMeshAgent->meshUrl));
-
+        rc = strcpy_s(g_pMeshAgent->meshUrl, sizeof(g_pMeshAgent->meshUrl), url);
+        if(rc != EOK)
+        {
+           ERR_CHK(rc);
+           MeshError("Error in copying url to data model g_pMeshAgent->meshUrl\n");
+           return FALSE;
+        }
         MeshSync mMsg = {0};
         // update the syscfg database
         Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_URL_CHANGE].sysStr, url, false);
         // Notify plume
         // Set sync message type
         mMsg.msgType = MESH_URL_CHANGE;
-        strncpy(mMsg.data.url.url, url, sizeof(mMsg.data.url.url));
-
+        rc = strcpy_s(mMsg.data.url.url, sizeof(mMsg.data.url.url), url);
+        if(rc != EOK)
+        {
+            ERR_CHK(rc);
+            MeshError("Error in copying url to mMsg.data.url.url\n");
+            return FALSE;
+        }
         // We filled our data structure so we can send it off
         msgQSend(&mMsg);
 
@@ -1041,15 +1166,18 @@ bool Mesh_SetUrl(char *url, bool init)
 eMeshStateType Mesh_GetMeshState()
 {
     unsigned char out_val[128];
-    int outbufsz = sizeof(out_val);
+    errno_t rc       = -1;
+    int     ind      = -1;
     eMeshStateType state = MESH_STATE_FULL;
 
     // MeshInfo("Entering into %s\n",__FUNCTION__);
 
     out_val[0]='\0';
-    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, out_val, outbufsz) == 0)
+    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, out_val, sizeof(out_val)) == 0)
     {
-        if (strcmp(out_val, meshStateArr[MESH_STATE_MONITOR].mStr) == 0)
+        rc = strcmp_s(meshStateArr[MESH_STATE_MONITOR].mStr,strlen(meshStateArr[MESH_STATE_MONITOR].mStr),out_val,&ind);
+        ERR_CHK(rc);
+        if((ind == 0) && (rc == EOK))
         {
             state = MESH_STATE_MONITOR;
         }
@@ -1113,15 +1241,18 @@ bool Mesh_SetMeshState(eMeshStateType state, bool init, bool commit)
 bool Mesh_GetEnabled(const char *name)
 {
     unsigned char out_val[128];
-    int outbufsz = sizeof(out_val);
+    errno_t rc       = -1;
+    int     ind      = -1;
     bool enabled = false;
 
     // MeshInfo("Entering into %s\n",__FUNCTION__);
 
     out_val[0]='\0';
-    if(Mesh_SysCfgGetStr(name, out_val, outbufsz) == 0)
+    if(Mesh_SysCfgGetStr(name, out_val, sizeof(out_val)) == 0)
     {
-        if (strcmp(out_val, "true") == 0)
+        rc = strcmp_s("true",strlen("true"),out_val,&ind);
+        ERR_CHK(rc);
+        if((!ind) && (rc == EOK))
         {
             enabled = true;
         }
@@ -1211,6 +1342,8 @@ BOOL is_band_steering_enabled()
     char dstPath[64]="/com/cisco/spvtg/ccsp/wifi";
     char *paramNames[]={"Device.WiFi.X_RDKCENTRAL-COM_BandSteering.Enable"};
     int  valNum = 0;
+    errno_t rc = -1;
+    int ind = -1;
 
     ret = CcspBaseIf_getParameterValues(
             bus_handle,
@@ -1230,8 +1363,9 @@ BOOL is_band_steering_enabled()
 
     MeshWarning("valStructs[0]->parameterValue = %s\n",valStructs[0]->parameterValue);
 
-    if(strncmp("true", valStructs[0]->parameterValue,4)==0)
-    {
+    rc = strcmp_s("true",strlen("true"),valStructs[0]->parameterValue,&ind);
+    ERR_CHK(rc);
+    if((ind == 0) && (rc == EOK))   {
         free_parameterValStruct_t(bus_handle, valNum, valStructs);
         return TRUE;
     }
@@ -1253,6 +1387,8 @@ BOOL is_reset_needed()
     char *paramNames[]={ap12,ap13};
     int  valNum = 0;
     BOOL ret_b=FALSE;
+    errno_t rc[2] = {-1, -1};
+    int ind[2] = {-1, -1};
 
     ret = CcspBaseIf_getParameterValues(
             bus_handle,
@@ -1269,12 +1405,18 @@ BOOL is_reset_needed()
          return FALSE;
     }
 
-
-    if(valStructs && ((strncmp("true", valStructs[0]->parameterValue,4)==0) || (strncmp("true", valStructs[1]->parameterValue,4)==0)))
+    if(valStructs)
     {
-        MeshInfo("Mesh interfaces are up, Need to disable them\n");
-        t2_event_d("WIFI_INFO_MeshDisabled_syscfg0", 1);
-        ret_b=(valStructs?true:false);
+	rc[0] = strcmp_s("true",strlen("true"),valStructs[0]->parameterValue,&ind[0]);
+        ERR_CHK(rc[0]);
+        rc[1] = strcmp_s("true",strlen("true"),valStructs[1]->parameterValue,&ind[1]);
+        ERR_CHK(rc[1]);
+	if (((ind[0] == 0 ) && (rc[0] == EOK)) || ((ind[1] == 0) && (rc[1] == EOK)))
+	{
+            MeshInfo("Mesh interfaces are up, Need to disable them\n");
+            t2_event_d("WIFI_INFO_MeshDisabled_syscfg0", 1);
+            ret_b=(valStructs?true:false);
+	}
     }
 
     if(valStructs)
@@ -1306,6 +1448,9 @@ BOOL is_SSID_enabled()
     char *paramNames[]={ap12,ap13};
     int  valNum = 0;
     BOOL ret_b=FALSE;
+    errno_t rc = -1;
+    int ind = -1;
+    int ifaceDown = 0;
 
     ret = CcspBaseIf_getParameterValues(
             bus_handle,
@@ -1322,8 +1467,26 @@ BOOL is_SSID_enabled()
          return FALSE;
     }
 
-
-    if(valStructs && ((strncmp("Down", valStructs[0]->parameterValue,4)==0) || (strncmp("Down", valStructs[1]->parameterValue,4)==0)))
+    if(valStructs)
+    {
+	rc = strcmp_s("Down",strlen("Down"),valStructs[0]->parameterValue,&ind);
+        ERR_CHK(rc);
+	if((ind ==0 ) && (rc == EOK)) 
+	{
+	     ifaceDown = 1;
+	}
+	else 
+	{
+	     rc = strcmp_s("Down",strlen("Down"),valStructs[1]->parameterValue,&ind);
+             ERR_CHK(rc);
+	     if((ind ==0 ) && (rc == EOK)) 
+	     {
+		   ifaceDown = 1;
+	     }
+	}
+    }
+	
+	if(ifaceDown)
         MeshInfo("Mesh interfaces are Down \n");
     else
          ret_b=(valStructs?true:false);
@@ -1366,6 +1529,7 @@ BOOL radio_check()
     int  valNum = 0;
     BOOL ret_b=FALSE;
     int ind = -1;
+    errno_t rc = -1;
     int radioDown = 0;
     char radio1[64] = {0};
     char radio2[64] = {0};
@@ -1394,20 +1558,26 @@ BOOL radio_check()
 
     if(valStructs)
     {
-        ind = strcmp(state,valStructs[0]->parameterValue);
-        if (ind ==0)
-        {
-            radioDown = 1;
-        }
-        else
-        {
-            ind = strcmp(state,valStructs[1]->parameterValue);
-            if (ind ==0)
-	    {
+
+            rc = strcmp_s(state,strlen(state),valStructs[0]->parameterValue,&ind);
+            ERR_CHK(rc);
+            if ((ind ==0 ) && (rc == EOK)) 
+            {
                 radioDown = 1;
             }
-        }
+            else
+            {
+                rc = strcmp_s(state,strlen(state),valStructs[1]->parameterValue,&ind);
+                ERR_CHK(rc);
+                if ((ind ==0 ) && (rc == EOK)) 
+		{
+		    radioDown = 1;
+		}
+			
+	    }
+	
     }
+	
     if(radioDown)
         MeshError("Radio Error: Status 2.4= %s 5= %s \n", valStructs[0]->parameterValue, valStructs[1]->parameterValue);
     else
@@ -1433,6 +1603,8 @@ BOOL is_bridge_mode_enabled()
     char dstPath[64]="/com/cisco/spvtg/ccsp/pam";
     char *paramNames[]={"Device.X_CISCO_COM_DeviceControl.LanManagementEntry.1.LanMode"};
     int  valNum = 0;
+    errno_t rc[2] = {-1, -1};
+    int ind[2] = {-1, -1};
 
     ret = CcspBaseIf_getParameterValues(
             bus_handle,
@@ -1452,9 +1624,11 @@ BOOL is_bridge_mode_enabled()
 
     MeshWarning("valStructs[0]->parameterValue = %s\n",valStructs[0]->parameterValue);
 
-    if( (strncmp("bridge-static", valStructs[0]->parameterValue,13)==0) || \
-                (strncmp("full-bridge-static", valStructs[0]->parameterValue,18)==0)
-          )
+    rc[0] = strcmp_s("bridge-static",strlen("bridge-static"),valStructs[0]->parameterValue,&ind[0]);
+    ERR_CHK(rc[0]);
+    rc[1] = strcmp_s("full-bridge-static",strlen("full-bridge-static"),valStructs[0]->parameterValue,&ind[1]);
+    ERR_CHK(rc[1]);
+    if(((ind[0] == 0 ) && (rc[0] == EOK)) || ((ind[1] == 0) && (rc[1] == EOK)))
     {
          MeshError("Brigde mode enabled, setting mesh wifi to disabled \n");
          free_parameterValStruct_t(bus_handle, valNum, valStructs);
@@ -1797,6 +1971,8 @@ BOOL is_radio_enabled(char *dcs1, char *dcs2)
     char *paramNames[]={dcs1,dcs2};
     int  valNum = 0;
     BOOL ret_b=FALSE;
+    errno_t rc = -1;
+    int ind = -1;
 
     ret = CcspBaseIf_getParameterValues(
             bus_handle,
@@ -1814,13 +1990,16 @@ BOOL is_radio_enabled(char *dcs1, char *dcs2)
     }
 
     MeshWarning("valStructs[0]->parameterValue = %s valStructs[1]->parameterValue = %s \n",valStructs[0]->parameterValue,valStructs[1]->parameterValue);
-
-    if(strncmp("false", valStructs[0]->parameterValue,5)==0)
+    rc = strcmp_s("false",strlen("false"),valStructs[0]->parameterValue,&ind);
+    ERR_CHK(rc);
+    if((ind ==0 ) && (rc == EOK)) 
         dcs1[0]=0;
     else
 	ret_b=TRUE;
 
-    if(strncmp("false", valStructs[1]->parameterValue,5)==0)
+    rc = strcmp_s("false",strlen("false"),valStructs[1]->parameterValue,&ind);
+    ERR_CHK(rc);
+    if((ind ==0 ) && (rc == EOK)) 
         dcs2[0]=0;
     else
         ret_b=TRUE;
@@ -1831,17 +2010,11 @@ BOOL is_radio_enabled(char *dcs1, char *dcs2)
 
 BOOL is_DCS_enabled()
 {
-    char rdk_dcs[2][128];
-    char vendor_dcs[2][128];
-
-    strncpy(rdk_dcs[0], "Device.WiFi.Radio.1.X_RDKCENTRAL-COM_DCSEnable", 128);
-    strncpy(rdk_dcs[1], "Device.WiFi.Radio.2.X_RDKCENTRAL-COM_DCSEnable", 128);
-    strncpy(vendor_dcs[0], "Device.WiFi.Radio.1.X_COMCAST-COM_DCSEnable", 128);
-    strncpy(vendor_dcs[1], "Device.WiFi.Radio.2.X_COMCAST-COM_DCSEnable", 128);
-
-
-    if(is_radio_enabled(rdk_dcs[0],rdk_dcs[1]) || is_radio_enabled(vendor_dcs[0],vendor_dcs[1])) 
+    if(is_radio_enabled("Device.WiFi.Radio.1.X_RDKCENTRAL-COM_DCSEnable","Device.WiFi.Radio.2.X_RDKCENTRAL-COM_DCSEnable") 
+          || is_radio_enabled("Device.WiFi.Radio.1.X_COMCAST-COM_DCSEnable","Device.WiFi.Radio.2.X_COMCAST-COM_DCSEnable")) 
+    {
         return TRUE;
+    }
     return FALSE;
 }
 
@@ -1869,7 +2042,8 @@ static void Mesh_Recovery()
 static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
 {
     unsigned char out_val[128];
-    int outbufsz = sizeof(out_val);
+    errno_t rc = -1, rc1 = -1;
+    int     ind = -1, ind1 = -1;
     int i = 0;
     FILE *cmd=NULL;
     char mesh_enable[16];
@@ -1882,23 +2056,34 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     is_xf3_platform();
     // set URL
     out_val[0]='\0';
-    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_URL_CHANGE].sysStr, out_val, outbufsz) != 0)
+    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_URL_CHANGE].sysStr, out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Mesh Url not set, using default %s\n", urlDefault);
         Mesh_SetUrl(urlDefault, true);
     } else {
-        if (!devFlag && strcmp(out_val, urlOld) == 0) {
+        rc = strcmp_s(out_val, strlen(out_val), urlOld, &ind);
+        ERR_CHK(rc);
+        if (!devFlag && ((ind == 0) && (rc == EOK)))
+        {
             // Using the old value, reset to new default
             MeshInfo("Mesh url was using old value, updating to %s\n", urlDefault);
             Mesh_SetUrl(urlDefault, true);
-        } else {
+        }
+        else
+        {
             if (devFlag) {
                 MeshInfo("Mesh dev specified, url not changed %s\n", out_val);
             } else {
                 MeshInfo("Mesh url is %s\n", out_val);
             }
             unsigned char outBuf[128];
-            strncpy(pMyObject->meshUrl, out_val, sizeof(pMyObject->meshUrl));
+            rc = strcpy_s(pMyObject->meshUrl, sizeof(pMyObject->meshUrl), out_val);
+            if(rc != EOK)
+            {
+                ERR_CHK(rc);
+                MeshError("Error in copying Mesh url to pMyObject->meshUrl\n");
+                return;
+            }
             // Send sysevent notification
             /* Coverity Fix CID:65429 DC.STRING_BUFFER */
             snprintf(outBuf,sizeof(outBuf), "MESH|%s", out_val);
@@ -1908,42 +2093,67 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
 
     // set Mesh State
     out_val[0]='\0';
-    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, out_val, outbufsz) != 0)
+    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Syscfg error, Setting initial mesh state to Full\n");
         Mesh_SetMeshState(MESH_STATE_FULL, true, true);
-    } else {
-        if (strcmp(out_val, meshStateArr[MESH_STATE_FULL].mStr) == 0) {
+    }
+    else
+    {
+        rc = strcmp_s(out_val, strlen(out_val), meshStateArr[MESH_STATE_FULL].mStr, &ind);
+        ERR_CHK(rc);
+        if((ind == 0) && (rc == EOK))
+        {
             MeshInfo("Setting initial mesh state to Full\n");
             Mesh_SetMeshState(MESH_STATE_FULL, true, false);
-        } else if (strcmp(out_val, meshStateArr[MESH_STATE_MONITOR].mStr) == 0) {
-            MeshInfo("Setting initial mesh state to Monitor\n");
-            Mesh_SetMeshState(MESH_STATE_MONITOR, true, false);
-        } else {
-            MeshWarning("Incorrect Mesh State value in syscfg, setting to Full\n");
-            Mesh_SetMeshState(MESH_STATE_FULL, true, true);
+        }
+        else
+        {
+            rc = strcmp_s(out_val, strlen(out_val), meshStateArr[MESH_STATE_MONITOR].mStr, &ind);
+            ERR_CHK(rc);
+            if((ind == 0) && (rc == EOK))
+            {
+                MeshInfo("Setting initial mesh state to Monitor\n");
+                Mesh_SetMeshState(MESH_STATE_MONITOR, true, false);
+            }
+            else
+            {
+                MeshWarning("Incorrect Mesh State value in syscfg, setting to Full\n");
+                Mesh_SetMeshState(MESH_STATE_FULL, true, true);
+            }
         }
     }
 
     // Set Mesh enabled
     out_val[0]='\0';
-    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, out_val, outbufsz) != 0)
+    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Syscfg get mesh_enable failed Retrying 5 times\n");
         for(i=0; i<5; i++)
         {
-          if(!Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, out_val, outbufsz)) {
-            MeshInfo("Syscfg get passed in %d retrial\n", i+1);
-            t2_event_d("SYS_INFO_SYSCFG_get_passed",  1);
-            if (strncmp(out_val, "true", 4) == 0) {
-              Mesh_SetEnabled(true, true);
-             } else if (strncmp(out_val, "false", 5) == 0) {
-              MeshInfo("Setting initial mesh wifi to disabled\n");
-              Mesh_SetEnabled(false, true);
-            }
-            else
- 	      Mesh_Recovery(); 
-            break;
+          if(!Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, out_val, sizeof(out_val)))
+          {
+              MeshInfo("Syscfg get passed in %d retrial\n", i+1);
+              t2_event_d("SYS_INFO_SYSCFG_get_passed",  1);
+              rc = strcmp_s("true",strlen("true"),out_val,&ind);
+              ERR_CHK(rc);
+              if((ind == 0 ) && (rc == EOK))
+              {
+                  Mesh_SetEnabled(true, true);
+              }
+              else
+              {
+                  rc = strcmp_s("false",strlen("false"),out_val,&ind);
+                  ERR_CHK(rc);
+                  if((ind == 0 ) && (rc == EOK))
+                  {
+                     MeshInfo("Setting initial mesh wifi to disabled\n");
+                     Mesh_SetEnabled(false, true);
+                  }
+                  else
+                      Mesh_Recovery();
+              }
+              break;
           }
           else
            MeshInfo("Syscfg get failed in %d retrial\n", i+1);
@@ -1962,71 +2172,109 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         }
         else
         {
-         fgets(mesh_enable, sizeof(mesh_enable), cmd);
-         MeshInfo("Manual Reading from db file = %s\n",mesh_enable);
-         if(!strncmp(mesh_enable,"true",4) || !strncmp(mesh_enable,"false",5))
-          Mesh_SetEnabled(mesh_enable, true);
-         else
-         {
-          MeshInfo("mesh_enable returned null from syscfg.db final attempt for recovery\n");
-          t2_event_d("SYS_ERROR_ApplyDefaut_MeshStatus", 1); 
-          Mesh_Recovery();
-         } 
-         pclose(cmd);
-        }
+           fgets(mesh_enable, sizeof(mesh_enable), cmd);
+           MeshInfo("Manual Reading from db file = %s\n",mesh_enable);
+           rc = strcmp_s("true",strlen("true"),mesh_enable,&ind);
+           ERR_CHK(rc);
+           rc1 = strcmp_s("false",strlen("false"),mesh_enable,&ind1);
+           ERR_CHK(rc1);
+           if(((ind ==0 ) && (rc == EOK)) || ((ind1 == 0) && (rc1 == EOK)))
+               Mesh_SetEnabled(mesh_enable, true);
+           else
+           {
+               MeshInfo("mesh_enable returned null from syscfg.db final attempt for recovery\n");
+               t2_event_d("SYS_ERROR_ApplyDefaut_MeshStatus", 1);
+               Mesh_Recovery();
+           }
+           pclose(cmd);
+         }
        }
     } else {
-        if (strcmp(out_val, "true") == 0) {
+        rc = strcmp_s("true",strlen("true"),out_val,&ind);
+        ERR_CHK(rc);
+        if((ind == 0) && (rc == EOK)){
             Mesh_SetEnabled(true, true);
-        } else if (strcmp(out_val, "false") == 0) {
-            MeshInfo("Setting initial mesh wifi default to disabled\n");
-            Mesh_SetEnabled(false, true);
         }
         else {
+            rc = strcmp_s("false",strlen("false"),out_val,&ind);
+            ERR_CHK(rc); 
+            if((ind == 0) && (rc == EOK)){
+                MeshInfo("Setting initial mesh wifi default to disabled\n");
+               Mesh_SetEnabled(false, true);
+            }
+            else {
             MeshInfo("Unexpected value from syscfg , doing recovery\n");
             Mesh_Recovery();
-        }
+           }
+       }  
     }
    
     out_val[0]='\0'; 
-    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr, out_val, outbufsz) != 0)
+    if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr, out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Syscfg error, Setting Ethbhaul mode to default FALSE\n");
         Mesh_SetMeshEthBhaul(false,true);
-    } else {
-       if (strncmp(out_val, "true", 4) == 0) {
+    }
+    else
+    {
+        rc = strcmp_s("true",strlen("true"),out_val,&ind);
+        ERR_CHK(rc);
+        if((ind ==0 ) && (rc == EOK))
+        {
            MeshInfo("Setting initial ethbhaul mode to true\n");
            Mesh_SetMeshEthBhaul(true,true);
-       } else if (strncmp(out_val, "false", 5) == 0) {
-           MeshInfo("Setting initial ethbhaul mode to false\n");
-           Mesh_SetMeshEthBhaul(false,true);
-       }
-       else {
-        MeshInfo("Ethernet Bhaul status error from syscfg , setting default FALSE\n");
-        Mesh_SetMeshEthBhaul(false,true);
-      }
+        }
+        else
+        {
+           rc = strcmp_s("false",strlen("false"),out_val,&ind);
+           ERR_CHK(rc);
+           if((ind ==0 ) && (rc == EOK))
+           {
+               MeshInfo("Setting initial ethbhaul mode to false\n");
+               Mesh_SetMeshEthBhaul(false,true);
+           }
+           else
+           {
+               MeshInfo("Ethernet Bhaul status error from syscfg , setting default FALSE\n");
+               Mesh_SetMeshEthBhaul(false,true);
+           }
+        }
     }
 
     out_val[0]='\0'; 
 
-    if(Mesh_SysCfgGetStr("mesh_ovs_enable", out_val, outbufsz) != 0)
+    if(Mesh_SysCfgGetStr("mesh_ovs_enable", out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Syscfg error, Setting OVS mode to default\n");
         Mesh_SetOVS(false,true);
-    } else {
-       if (strncmp(out_val, "true", 4) == 0) {
+    }
+    else
+    {
+        rc = strcmp_s("true",strlen("true"),out_val,&ind);
+        ERR_CHK(rc);
+        if((ind ==0 ) && (rc == EOK))
+        {
            MeshInfo("Setting initial OVS mode to true\n");
            Mesh_SetOVS(true,true);
            g_pMeshAgent->OvsEnable = true;
-       } else if (strncmp(out_val, "false", 5) == 0) {
-           MeshInfo("Setting initial OVS mode to false\n");
-           Mesh_SetOVS(false,true);
-       }
-       else {
-        MeshInfo("OVS status error from syscfg , setting default\n");
-        Mesh_SetOVS(false,true);
-      }
-    }
+        }
+        else
+        {
+           rc = strcmp_s("false",strlen("false"),out_val,&ind);
+           ERR_CHK(rc);
+           if((ind ==0 ) && (rc == EOK))
+           {
+               MeshInfo("Setting initial OVS mode to false\n");
+               Mesh_SetOVS(false,true);
+           }
+           else
+           {
+              MeshInfo("OVS status error from syscfg , setting default\n");
+              Mesh_SetOVS(false,true);
+           }
+         }
+     }
+
      out_val[0]='\0';
      if(Mesh_SysCfgGetStr("mesh_gre_acc_enable", out_val, sizeof(out_val)) != 0)
      {
@@ -2059,6 +2307,8 @@ bool Mesh_UpdateConnectedDevice(char *mac, char *iface, char *host, char *status
 {
     // send out notification to plume
     MeshSync mMsg = {0};
+    errno_t rc[2] = {-1, -1};
+    int ind[2] = {-1, -1};
 
     // Notify plume
     // Set sync message type
@@ -2068,14 +2318,24 @@ bool Mesh_UpdateConnectedDevice(char *mac, char *iface, char *host, char *status
     }
     mMsg.msgType = MESH_CLIENT_CONNECT;
     if (mac != NULL && mac[0] != '\0') {
-        strncpy(mMsg.data.meshConnect.mac, mac, sizeof(mMsg.data.meshConnect.mac)-1);
+        rc[0] = strcpy_s(mMsg.data.meshConnect.mac, sizeof(mMsg.data.meshConnect.mac), mac);
+        if(rc[0] != EOK)
+        {
+            ERR_CHK(rc[0]);
+            MeshError("Error in copying mac to Connected Client\n");
+            return false;
+        }
     } else {
         MeshWarning("Mac address is NULL in connected client message, ignoring\n");
         return false;
     }
 
     if (status != NULL && status[0] != '\0') {
-        mMsg.data.meshConnect.isConnected = ((strcmp("Connected", status) == 0 || strcmp("Online", status) == 0)? true:false);
+        rc[0] = strcmp_s("Connected",strlen("Connected"),status,&ind[0]);
+        ERR_CHK(rc[0]);
+        rc[1] = strcmp_s("Online",strlen("Online"),status,&ind[1]);
+        ERR_CHK(rc[1]);
+        mMsg.data.meshConnect.isConnected = ((((ind[0] == 0) && (rc[0] == EOK)) || ((ind[1] == 0) && (rc[1] == EOK)))? true:false);
     } else {
         MeshWarning("Connect status is NULL in connected client message, ignoring\n");
         return false;
@@ -2089,7 +2349,13 @@ bool Mesh_UpdateConnectedDevice(char *mac, char *iface, char *host, char *status
     }
 
     if (host != NULL && host[0] != '\0') {
-        strncpy(mMsg.data.meshConnect.host, host, sizeof(mMsg.data.meshConnect.host)-1);
+        rc[0] = strcpy_s(mMsg.data.meshConnect.host, sizeof(mMsg.data.meshConnect.host), host);
+        if(rc[0] != EOK)
+        {
+            ERR_CHK(rc[0]);
+            MeshError("Error in copying host to connected client\n");
+            return false;
+        }
     }
     // update our connected device table
     Mesh_UpdateClientTable(mMsg.data.meshConnect.iface, mMsg.data.meshConnect.mac, mMsg.data.meshConnect.host, mMsg.data.meshConnect.isConnected);
@@ -2109,11 +2375,24 @@ void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type)
 {   
     // send out notification to plume
     MeshSync mMsg = {0};
+    errno_t rc = -1;
     // Notify plume
     // Set sync message type
     mMsg.msgType = MESH_RFC_UPDATE;
-    strncpy(mMsg.data.rfcUpdate.paramname, param, sizeof(mMsg.data.rfcUpdate.paramname)-1);
-    strncpy(mMsg.data.rfcUpdate.paramval, val, sizeof(mMsg.data.rfcUpdate.paramval)-1);
+    rc = strcpy_s(mMsg.data.rfcUpdate.paramname, sizeof(mMsg.data.rfcUpdate.paramname),  param);
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+        MeshError("Error in copying paramname for RFC Update\n");
+        return;
+    }
+    rc = strcpy_s(mMsg.data.rfcUpdate.paramval, sizeof(mMsg.data.rfcUpdate.paramval), val);
+    if(rc != EOK)
+    {
+        ERR_CHK(rc);
+        MeshError("Error in copying paramval for RFC Update\n");
+        return;
+    }
     mMsg.data.rfcUpdate.type = type;
     MeshInfo("RFC_UPDATE: param: %s val:%s type=%d\n",mMsg.data.rfcUpdate.paramname, mMsg.data.rfcUpdate.paramval, mMsg.data.rfcUpdate.type);
     msgQSend(&mMsg);
@@ -2159,21 +2438,47 @@ void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostna
 {
     // send out notification to plume
     MeshSync mMsg = {0};
+    errno_t rc = -1;
     // Notify plume
     // Set sync message type
     mMsg.msgType = msgType;
     if(clientSocketsMask && msgType <= MESH_DHCP_UPDATE_LEASE)
     {
-        strncpy(mMsg.data.meshLease.mac, mac, sizeof(mMsg.data.meshLease.mac)-1);
-        strncpy(mMsg.data.meshLease.ipaddr, ipaddr, sizeof(mMsg.data.meshLease.ipaddr)-1);
-        strncpy(mMsg.data.meshLease.hostname, hostname, sizeof(mMsg.data.meshLease.hostname)-1);
-        strncpy(mMsg.data.meshLease.fingerprint, fingerprint, sizeof(mMsg.data.meshLease.fingerprint)-1);
-        MeshInfo("DNSMASQ: %d %s %s %s %s\n",mMsg.msgType,mMsg.data.meshLease.mac, mMsg.data.meshLease.ipaddr, mMsg.data.meshLease.hostname, mMsg.data.meshLease.fingerprint);
-        msgQSend(&mMsg);
-        // Link change notification: prints telemetry on pod networks
-        if( msgType != MESH_DHCP_REMOVE_LEASE && Mesh_PodAddress(mac, FALSE) && strstr( ipaddr, POD_IP_PREFIX)) {
-            Mesh_logLinkChange();
-        }
+       rc = strcpy_s(mMsg.data.meshLease.mac, sizeof(mMsg.data.meshLease.mac), mac);
+       if(rc != EOK)
+       {
+           ERR_CHK(rc);
+           MeshError("Error in copying mac address for DHCP lease update, mac - %s\n", mac);
+           return;
+       }
+       rc = strcpy_s(mMsg.data.meshLease.ipaddr, sizeof(mMsg.data.meshLease.ipaddr), ipaddr);
+       if(rc !=EOK)
+       {
+          ERR_CHK(rc);
+          MeshError("Error in copying ip address for DHCP lease update, mac - %s\n", mac);
+          return;
+       }
+       rc = strcpy_s(mMsg.data.meshLease.hostname, sizeof(mMsg.data.meshLease.hostname), hostname);
+       if(rc !=EOK)
+       {
+           ERR_CHK(rc);
+           MeshError("Error in copying hostname for DHCP lease update, mac - %s\n", mac);
+           return;
+       }
+       rc = strcpy_s(mMsg.data.meshLease.fingerprint, sizeof(mMsg.data.meshLease.fingerprint), fingerprint);
+       if(rc !=EOK)
+       {
+           ERR_CHK(rc);
+           MeshError("Error in copying fingerprint for DHCP lease update, mac - %s\n", mac);
+           return;
+       }
+       MeshInfo("DNSMASQ: %d %s %s %s %s\n",mMsg.msgType,mMsg.data.meshLease.mac, mMsg.data.meshLease.ipaddr, mMsg.data.meshLease.hostname, mMsg.data.meshLease.fingerprint);
+       msgQSend(&mMsg);
+       // Link change notification: prints telemetry on pod networks
+       if( msgType != MESH_DHCP_REMOVE_LEASE && Mesh_PodAddress(mac, FALSE) && strstr( ipaddr, POD_IP_PREFIX)) {
+          Mesh_logLinkChange();
+       }
+
     }
     return true;
 }
@@ -2311,6 +2616,8 @@ static void *Mesh_sysevent_handler(void *data)
         int vallen  = sizeof(val);
         int err;
         async_id_t getnotification_asyncid;
+        errno_t rc       = -1;
+        int     ind      = -1;
 
         // Tell the socket code we are ready to handle messages
         if (!s_SysEventHandler_ready) {
@@ -2328,48 +2635,59 @@ static void *Mesh_sysevent_handler(void *data)
         }
         else
         {
-            if (strcmp(name, meshSyncMsgArr[MESH_WIFI_RESET].sysStr)==0)
+            eMeshSyncType ret_val;
+            if(Get_MeshSyncType(name,&ret_val))
             {
-                if( val)
-                 MeshInfo("received notification event %s val =%s \n", name, val);
-                else
-                 MeshInfo("received notification event %s\n", name);
-                // Need to restart the meshwifi service if it is currently running.
-                if (g_pMeshAgent->meshEnable || svcagt_get_service_state(meshServiceName))
+                if (ret_val == MESH_WIFI_RESET)
                 {
-                    MeshSync mMsg = {0};
+                     if( val)
+                         MeshInfo("received notification event %s val =%s \n", name, val);
+                     else
+                         MeshInfo("received notification event %s\n", name);
+                         // Need to restart the meshwifi service if it is currently running.
+                         if (g_pMeshAgent->meshEnable || svcagt_get_service_state(meshServiceName))
+                         {
+                              MeshSync mMsg = {0};
 
-                    // Set sync message type
-                    mMsg.msgType = MESH_WIFI_RESET;
-                    mMsg.data.wifiReset.reset = true;
+                              // Set sync message type
+                              mMsg.msgType = MESH_WIFI_RESET;
+                              mMsg.data.wifiReset.reset = true;
 
-                    // We filled our data structure so we can send it off
-                    msgQSend(&mMsg);
+                              // We filled our data structure so we can send it off
+                              msgQSend(&mMsg);
 
-                    /**
-                     * At this time, we are just restarting the mesh components when a wifi_init comes
-                     * in. At some point in the future, they may handle the wifi_init directly rather
-                     * than having to be re-started.
-                     */
-                    // shutdown
-                    if (val && val[0] != '\0' && g_pMeshAgent->meshEnable)
-                    {
-                     if(!strcmp( val, "start" )) {
-                       MeshInfo("Stopping meshwifi service\n");
-                       svcagt_set_service_state(meshServiceName, false);
-                     }
-                     else if(!strcmp( val, "stop" )) {
-                       MeshInfo("Starting meshwifi service\n");
-                       svcagt_set_service_state(meshServiceName, true);
-                     }
-                     else  
-                      MeshWarning("Unsupported option %s \n", val);
-                    }
-                } else {
-                    MeshInfo("meshwifi.service is not running - not restarting\n");
-                }
+                              /**
+                               * At this time, we are just restarting the mesh components when a wifi_init comes
+                               * in. At some point in the future, they may handle the wifi_init directly rather
+                               * than having to be re-started.
+                               */
+                              // shutdown
+                              if (val && val[0] != '\0' && g_pMeshAgent->meshEnable)
+                              {
+                                  rc = strcmp_s("start", strlen("start"), val, &ind);
+                                  if((rc == EOK) && (!ind))
+                                  {
+                                       MeshInfo("Stopping meshwifi service\n");
+                                       svcagt_set_service_state(meshServiceName, false);
+                                  }
+                                  else
+                                  {
+                                       rc = strcmp_s("stop", strlen("stop"), val, &ind);
+                                       if((rc == EOK) && (!ind))
+                                       {
+                                            MeshInfo("Starting meshwifi service\n");
+                                            svcagt_set_service_state(meshServiceName, true);
+                                       }
+                                       else
+                                            MeshWarning("Unsupported option %s \n", val);
+                                  }
+                               }
+                            }
+                            else {
+                                   MeshInfo("meshwifi.service is not running - not restarting\n");
+                            }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_RADIO_CHANNEL].sysStr)==0)
+            else if (ret_val == MESH_WIFI_RADIO_CHANNEL)
             {
                 // Radio config sysevents will be formatted: ORIG|index|channel
                 if (val && val[0] != '\0')
@@ -2394,7 +2712,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2426,7 +2746,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_RADIO_CHANNEL_MODE].sysStr)==0)
+            else if (ret_val == MESH_WIFI_RADIO_CHANNEL_MODE)
             {
                 // Radio config sysevents will be formatted: ORIG|index|channel
                 if (val && val[0] != '\0')
@@ -2451,7 +2771,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2466,23 +2788,36 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 2:
                             MeshInfo("channeModel=%s\n", token);
-                            strncpy(mMsg.data.wifiRadioChannelMode.channelMode, token,
-                                    sizeof(mMsg.data.wifiRadioChannelMode.channelMode));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.wifiRadioChannelMode.channelMode, sizeof(mMsg.data.wifiRadioChannelMode.channelMode), token);
+                            if(rc != EOK)
+                            {
+                                ERR_CHK(rc);
+                                MeshError("Error in copying channel mode in MESH_WIFI_RADIO_CHANNEL_MODE\n");
+                            }
+                            else
+                            {
+                                valFound = true;
+                            }
                             break;
                         case 3:
                             MeshInfo("gOnlyFlag=%s\n", token);
-                            (mMsg.data.wifiRadioChannelMode.gOnlyFlag = (strcmp(token, "true") == 0) ? 1:0);
+                            rc = strcmp_s("true",strlen("true"),token,&ind);
+                            ERR_CHK(rc);
+                            (mMsg.data.wifiRadioChannelMode.gOnlyFlag = ((ind == 0) && (rc == EOK)) ? 1:0);
                             valFound = true;
                             break;
                         case 4:
                             MeshInfo("nOnlyFlag=%s\n", token);
-                            (mMsg.data.wifiRadioChannelMode.nOnlyFlag = (strcmp(token, "true") == 0) ? 1:0);
+                            rc = strcmp_s("true",strlen("true"),token,&ind);
+                            ERR_CHK(rc);
+                            (mMsg.data.wifiRadioChannelMode.nOnlyFlag = ((ind == 0) && (rc == EOK)) ? 1:0);
                             valFound = true;
                             break;
                         case 5:
                             MeshInfo("acOnlyFlag=%s\n", token);
-                            (mMsg.data.wifiRadioChannelMode.acOnlyFlag = (strcmp(token, "true") == 0) ? 1:0);
+                            rc = strcmp_s("true",strlen("true"),token,&ind);
+                            ERR_CHK(rc);
+                            (mMsg.data.wifiRadioChannelMode.acOnlyFlag = ((ind == 0) && (rc == EOK)) ? 1:0);
                             valFound = true;
                             break;
                         default:
@@ -2499,7 +2834,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_SSID_ADVERTISE].sysStr)==0)
+            else if (ret_val == MESH_WIFI_SSID_ADVERTISE)
             {
                 // SSID config sysevents will be formatted: ORIG|index|ssid
                 if (val && val[0] != '\0')
@@ -2524,7 +2859,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2539,7 +2876,9 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 2:
                             MeshInfo("enable=%s\n", token);
-                            (mMsg.data.wifiSSIDAdvertise.enable = (strcmp(token, "true") == 0) ? 1:0);
+                            rc = strcmp_s("true",strlen("true"),token,&ind);
+                            ERR_CHK(rc);
+                            (mMsg.data.wifiSSIDAdvertise.enable = ((ind == 0) && (rc == EOK)) ? 1:0);
                             valFound = true;
                             break;
                         default:
@@ -2556,7 +2895,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_SSID_NAME].sysStr)==0)
+            else if (ret_val == MESH_WIFI_SSID_NAME)
             {
                 // SSID config sysevents will be formatted: ORIG|index|ssid
                 if (val && val[0] != '\0')
@@ -2581,7 +2920,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2597,8 +2938,15 @@ static void *Mesh_sysevent_handler(void *data)
                         case 2:
                             /*Coverity Fix CID:57710 PW.TOO_MANY_PRINTF_ARGS */
                             MeshInfo("ssid reveived:\n");
-                            strncpy(mMsg.data.wifiSSIDName.ssid, token, sizeof(mMsg.data.wifiSSIDName.ssid));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.wifiSSIDName.ssid, sizeof(mMsg.data.wifiSSIDName.ssid), token);
+                            if(rc != EOK)
+                            {
+                                  ERR_CHK(rc);
+                                  MeshError("Error in copying WiFI ssid\n");
+                            }
+                            else{
+                                 valFound = true;
+                            }
                             break;
                         default:
                             break;
@@ -2614,7 +2962,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_AP_SECURITY].sysStr)==0)
+            else if (ret_val == MESH_WIFI_AP_SECURITY)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
                 if (val && val[0] != '\0')
@@ -2639,7 +2987,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2656,20 +3006,41 @@ static void *Mesh_sysevent_handler(void *data)
                         case 2:
                              /* Coverity Issue Fix - CID:125245 : Printf Args */
                             MeshInfo("passphrase recieved \n");
-                            strncpy(mMsg.data.wifiAPSecurity.passphrase, token, sizeof(mMsg.data.wifiAPSecurity.passphrase));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.wifiAPSecurity.passphrase, sizeof(mMsg.data.wifiAPSecurity.passphrase), token);
+                            if(rc != EOK)
+                            {
+                                ERR_CHK(rc);
+                                MeshError("Error in copying passphrase\n");
+                            }
+                            else{
+                                valFound = true;
+                            }
                             break;
                         case 3:
                              /* Coverity Issue Fix - CID:125245 : Printf Args*/
                             MeshInfo("security mode received\n");
-                            strncpy(mMsg.data.wifiAPSecurity.secMode, token, sizeof(mMsg.data.wifiAPSecurity.secMode));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.wifiAPSecurity.secMode, sizeof(mMsg.data.wifiAPSecurity.secMode), token);
+                            if(rc != EOK)
+                            {
+                                ERR_CHK(rc);
+                                MeshError("Error in copying security mode\n");
+                            }
+                            else{
+                                valFound = true;
+                            }
                             break;
                         case 4:
                              /* Coverity Issue Fix - CID:125245  : Printf Args*/
                             MeshInfo("encryption mode recieved\n");
-                            strncpy(mMsg.data.wifiAPSecurity.encryptMode, token, sizeof(mMsg.data.wifiAPSecurity.encryptMode));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.wifiAPSecurity.encryptMode, sizeof(mMsg.data.wifiAPSecurity.encryptMode), token);
+                            if(rc != EOK)
+                            {
+                                ERR_CHK(rc);
+                                MeshError("Error in copying encryption mode\n");
+                            }
+                            else{
+                                valFound = true;
+                            }
                             break;
                         default:
                             break;
@@ -2685,7 +3056,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_AP_KICK_ASSOC_DEVICE].sysStr)==0)
+            else if (ret_val == MESH_WIFI_AP_KICK_ASSOC_DEVICE)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
                 if (val && val[0] != '\0')
@@ -2710,7 +3081,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2725,8 +3098,15 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 2:
                             MeshInfo("mac=%s\n", token);
-                            strncpy(mMsg.data.wifiAPKickAssocDevice.mac, token, sizeof(mMsg.data.wifiAPKickAssocDevice.mac));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.wifiAPKickAssocDevice.mac, sizeof(mMsg.data.wifiAPKickAssocDevice.mac), token);
+                            if(rc != EOK)
+                            {
+                                ERR_CHK(rc);
+                                MeshError("Error in copying mac address - MESH_WIFI_AP_KICK_ASSOC_DEVICE\n");
+                            }
+                            else{
+                                valFound = true;
+                            }
                             break;
                         default:
                             break;
@@ -2742,7 +3122,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_AP_KICK_ALL_ASSOC_DEVICES].sysStr)==0)
+            else if (ret_val == MESH_WIFI_AP_KICK_ALL_ASSOC_DEVICES)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
                 if (val && val[0] != '\0')
@@ -2767,7 +3147,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2794,7 +3176,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_AP_ADD_ACL_DEVICE].sysStr)==0)
+            else if (ret_val == MESH_WIFI_AP_ADD_ACL_DEVICE)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
                 if (val && val[0] != '\0')
@@ -2819,7 +3201,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2834,8 +3218,15 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 2:
                             MeshInfo("mac=%s\n", token);
-                            strncpy(mMsg.data.wifiAPAddAclDevice.mac, token, sizeof(mMsg.data.wifiAPAddAclDevice.mac));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.wifiAPAddAclDevice.mac, sizeof(mMsg.data.wifiAPAddAclDevice.mac), token);
+                            if(rc != EOK)
+                            {
+                                  ERR_CHK(rc);
+                                  MeshError("Error in copying mac address - MESH_WIFI_AP_ADD_ACL_DEVICE\n");
+                            }
+                            else{
+                                  valFound = true;
+                            }
                             break;
                         default:
                             break;
@@ -2851,7 +3242,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_AP_DEL_ACL_DEVICE].sysStr)==0)
+            else if (ret_val == MESH_WIFI_AP_DEL_ACL_DEVICE)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
                 if (val && val[0] != '\0')
@@ -2876,7 +3267,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2891,8 +3284,15 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 2:
                             MeshInfo("mac=%s\n", token);
-                            strncpy(mMsg.data.wifiAPDelAclDevice.mac, token, sizeof(mMsg.data.wifiAPDelAclDevice.mac));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.wifiAPDelAclDevice.mac, sizeof(mMsg.data.wifiAPDelAclDevice.mac), token);
+                            if(rc != EOK)
+                            {
+                                 ERR_CHK(rc);
+                                 MeshError("Error in copying mac address - MESH_WIFI_AP_DEL_ACL_DEVICE\n");
+                            }
+                            else{
+                                valFound = true;
+                            }
                             break;
                         default:
                             break;
@@ -2908,7 +3308,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_MAC_ADDR_CONTROL_MODE].sysStr)==0)
+            else if (ret_val == MESH_WIFI_MAC_ADDR_CONTROL_MODE)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
                 if (val && val[0] != '\0')
@@ -2933,7 +3333,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -2948,12 +3350,16 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 2:
                             MeshInfo("isEnabled=%s\n", token);
-                            (mMsg.data.wifiMacAddrControlMode.isEnabled = (strcmp(token, "true") == 0) ? 1:0);
+                            rc = strcmp_s("true",strlen("true"),token,&ind);
+                            ERR_CHK(rc);
+                            (mMsg.data.wifiMacAddrControlMode.isEnabled = ((ind == 0) && (rc == EOK)) ? 1:0);
                             valFound = true;
                             break;
                         case 3:
                             MeshInfo("isBlacklist=%s\n", token);
-                            (mMsg.data.wifiMacAddrControlMode.isBlacklist = (strcmp(token, "true") == 0) ? 1:0);
+                            rc = strcmp_s("true",strlen("true"),token,&ind);
+                            ERR_CHK(rc);
+                            (mMsg.data.wifiMacAddrControlMode.isBlacklist = ((ind == 0) && (rc == EOK)) ? 1:0);
                             valFound = true;
                             break;
                         default:
@@ -2970,7 +3376,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_STATUS].sysStr)==0)
+            else if (ret_val == MESH_WIFI_STATUS)
             {
                 // mesh sysevents will be formatted: ORIG|mode
                 if (val && val[0] != '\0')
@@ -2993,7 +3399,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process MESH status sysevent messages
-                            if (strcmp(token, "MESH") != 0)
+                            rc = strcmp_s("MESH", strlen("MESH"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -3003,7 +3411,9 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 1:
                             MeshInfo("mesh_status=%s\n", token);
-                            if (strncmp(token, "Init", strlen("Init")) == 0) {
+                            rc = strcmp_s("Init", strlen("Init"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind == 0) && (rc == EOK)) {
 				t2_event_d("WIFI_INFO_MeshInit", 1);
   			    }
                             status = Mesh_WifiStatusLookup(token);
@@ -3042,11 +3452,23 @@ static void *Mesh_sysevent_handler(void *data)
                             // Notify plume
                             // Set sync message type
                             mMsg.msgType = MESH_CLIENT_CONNECT;
-                            strncpy(mMsg.data.meshConnect.mac, mac, sizeof(mMsg.data.meshConnect.mac)-1);
+                            rc = strcpy_s(mMsg.data.meshConnect.mac, sizeof(mMsg.data.meshConnect.mac), mac);
+                            if(rc != EOK)
+                            {
+                                  ERR_CHK(rc);
+                                  MeshError("Error in copying mac in MESH_CLIENT_CONNECT\n");
+                                  return;
+                            }
                             mMsg.data.meshConnect.isConnected = true; // all reported devices are "connected"
                             mMsg.data.meshConnect.iface = iface;
                             if (host != NULL &&  host[0] != '\0') {
-                                strncpy(mMsg.data.meshConnect.host, host, sizeof(mMsg.data.meshConnect.host)-1);
+                                rc = strcpy_s(mMsg.data.meshConnect.host, sizeof(mMsg.data.meshConnect.host),host);
+                                if(rc != EOK)
+                                {
+                                     ERR_CHK(rc);
+                                     MeshError("Error in copying host in MESH_CLIENT_CONNECT\n");
+                                     return;
+                                }
                             }
 
                             // We filled our data structure so we can send it off
@@ -3056,7 +3478,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr)==0)
+            else if (ret_val == MESH_WIFI_ENABLE)
             {
                 if (val && val[0] != '\0')
                 {
@@ -3078,7 +3500,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -3088,7 +3512,10 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 1:
                             MeshInfo("mesh_enable=%s\n", token);
-                            if (strcmp(token, "true") == 0) {
+                            rc = strcmp_s("true", strlen("true"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind == 0) && (rc == EOK))
+                            {
                                 enabled = true;
                             }
                             valFound = true;
@@ -3114,7 +3541,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_URL_CHANGE].sysStr)==0)
+            else if (ret_val == MESH_URL_CHANGE)
             {
                 // mesh url changed
                 // Url config sysevents will be formatted: ORIG|url
@@ -3137,7 +3564,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -3147,8 +3576,15 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 1:
                             MeshInfo("url=%s\n", token);
-                            strncpy(url, token, sizeof(url));
-                            valFound = true;
+                            rc = strcpy_s(url, sizeof(url),token);
+                            if(rc != EOK)
+                            {
+                                ERR_CHK(rc);
+                                MeshError("Error in copying url in MESH_URL_CHANGE\n");
+                            }
+                            else{
+                                valFound = true;
+                            }
                             break;
                         default:
                             break;
@@ -3164,7 +3600,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_SUBNET_CHANGE].sysStr)==0)
+            else if (ret_val == MESH_SUBNET_CHANGE)
             {
                 // mesh subnet change changed
                 // Subnet change config sysevents will be formatted: ORIG|gwIP|netmask
@@ -3190,7 +3626,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -3200,13 +3638,27 @@ static void *Mesh_sysevent_handler(void *data)
                             break;
                         case 1:
                             MeshInfo("gwIP=%s\n", token);
-                            strncpy(mMsg.data.subnet.gwIP, token,sizeof(mMsg.data.subnet.gwIP));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.subnet.gwIP, sizeof(mMsg.data.subnet.gwIP),token);
+                            if(rc != EOK)
+                            {
+                                 ERR_CHK(rc);
+                                 MeshError("Error in copying gwIP in MESH_SUBNET_CHANGE\n");
+                            }
+                            else{
+                                 valFound = true;
+                            }
                             break;
                         case 2:
                             MeshInfo("netmask=%s\n", token);
-                            strncpy(mMsg.data.subnet.netmask,token,sizeof(mMsg.data.subnet.netmask));
-                            valFound = true;
+                            rc = strcpy_s(mMsg.data.subnet.netmask, sizeof(mMsg.data.subnet.netmask),token);
+                            if(rc != EOK)
+                            {
+                                 ERR_CHK(rc);
+                                 MeshError("Error in copying netmask in MESH_SUBNET_CHANGE\n");
+                            }
+                            else{
+                                 valFound = true;
+                            }
                             break;
                         default:
                             break;
@@ -3222,7 +3674,7 @@ static void *Mesh_sysevent_handler(void *data)
                     }
                 }
             }
-            else if (strcmp(name, meshSyncMsgArr[MESH_WIFI_TXRATE].sysStr)==0)
+            else if (ret_val == MESH_WIFI_TXRATE)
             {
                 // TxRate config sysevents will be formatted: ORIG|index|BasicRates:<basicRates>|OperationalRates:<operationalRates>
                 if (val && val[0] != '\0')
@@ -3247,7 +3699,9 @@ static void *Mesh_sysevent_handler(void *data)
                         case 0:
                             // Parse message origin to see if we should process.
                             // We only process RDK sysevent messages
-                            if (strcmp(token, "RDK") != 0)
+                            rc = strcmp_s("RDK", strlen("RDK"), token, &ind);
+                            ERR_CHK(rc);
+                            if ((ind != 0) && (rc == EOK))
                             {
                                 process = false;
                                 continue;
@@ -3267,13 +3721,26 @@ static void *Mesh_sysevent_handler(void *data)
 
                             if (strPtr != NULL) {
                                 MeshInfo("basicRates=%s\n", (strPtr+1));
-                                strncpy(mMsg.data.wifiTxRate.basicRates, (strPtr+1), sizeof(mMsg.data.wifiTxRate.basicRates));
+                                rc = strcpy_s(mMsg.data.wifiTxRate.basicRates, sizeof(mMsg.data.wifiTxRate.basicRates), (strPtr+1));
+                                if(rc != EOK)
+                                {
+                                     ERR_CHK(rc);
+                                     MeshError("Error in copying WiFi basicRates in MESH_WIFI_TXRATE\n");
+                                }
                             } else {
                                 // we couldn't find our qualifier, just copy the whole thing
                                 MeshInfo("basicRates=%s\n", token);
-                                strncpy(mMsg.data.wifiTxRate.basicRates, token, sizeof(mMsg.data.wifiTxRate.basicRates));
+                                rc = strcpy_s(mMsg.data.wifiTxRate.basicRates, sizeof(mMsg.data.wifiTxRate.basicRates), token);
+                                if(rc != EOK)
+                                {
+                                     ERR_CHK(rc);
+                                     MeshError("Error in copying Whole qualifier WiFi basicRates in MESH_WIFI_TXRATE\n");
+                                }
                             }
-                            valFound = true;
+                            if(rc == EOK)
+                            {
+                                  valFound = true;
+                            }
                         }
                             break;
                         case 3:
@@ -3283,13 +3750,26 @@ static void *Mesh_sysevent_handler(void *data)
 
                             if (strPtr != NULL) {
                                 MeshInfo("operationalRates=%s\n", (strPtr+1));
-                                strncpy(mMsg.data.wifiTxRate.opRates, (strPtr+1), sizeof(mMsg.data.wifiTxRate.opRates));
+                                rc = strcpy_s(mMsg.data.wifiTxRate.opRates, sizeof(mMsg.data.wifiTxRate.opRates), (strPtr+1));
+                                if(rc != EOK)
+                                {
+                                    ERR_CHK(rc);
+                                    MeshError("Error in copying WiFi opRates in MESH_WIFI_TXRATE\n");
+                                } 
                             } else {
                                 // we couldn't find our qualifier, just copy the whole thing
                                 MeshInfo("operationalRates=%s\n", token);
-                                strncpy(mMsg.data.wifiTxRate.opRates, token, sizeof(mMsg.data.wifiTxRate.opRates));
+                                rc = strcpy_s(mMsg.data.wifiTxRate.opRates, sizeof(mMsg.data.wifiTxRate.opRates), token);
+                                if(rc != EOK)
+                                {
+                                    ERR_CHK(rc);
+                                    MeshError("Error in copying Whole qualifier WiFi opRates in MESH_WIFI_TXRATE\n");
+                                }
                             }
-                            valFound = true;
+                            if(rc == EOK)
+                            {
+                                 valFound = true;
+                            }
                         }
                             break;
                         default:
@@ -3310,6 +3790,7 @@ static void *Mesh_sysevent_handler(void *data)
             {
                 MeshWarning("undefined event %s \n",name);
             }
+          }
         }
     }
 
@@ -3325,6 +3806,7 @@ static void *Mesh_sysevent_handler(void *data)
 void Mesh_InitClientList()
 {
     char val[256] = {0};
+    errno_t rc = -1;
 
 #ifdef MESH_DOWNLOADABLE_MODULE
     FILE *fp = popen("dmcli eRT getv Device.Hosts.Host. > /tmp/client_list.txt; /tmp/plume_dnld/usr/ccsp/mesh/active_host_filter.sh /tmp/client_list.txt", "r");
@@ -3347,13 +3829,27 @@ void Mesh_InitClientList()
             {
                 switch (idx) {
                 case 0: // Mac Address
-                    strncpy(mac, token, sizeof(mac)-1);
+                    rc = strcpy_s(mac, sizeof(mac), token);
+                    if(rc != EOK)
+                    {
+                        ERR_CHK(rc);
+                        MeshError("MAC Address not added\n");
+                        pclose(fp);
+                        return;
+                    }
                     break;
                 case 1: // Interface
                     iface = Mesh_IfaceLookup(token);
                     break;
                 case 2: // HostName
-                    strncpy(host, token, sizeof(host)-1);
+                    rc = strcpy_s(host, sizeof(host), token);
+                    if(rc != EOK)
+                    {
+                        ERR_CHK(rc);
+                        MeshError("MAC hostname not added\n");
+                        pclose(fp);
+                        return;
+                    }
                     break;
                 default:
                     break;
@@ -3381,7 +3877,8 @@ int Mesh_Init(ANSC_HANDLE hThisObject)
 {
     int status = 0;
     int thread_status = 0;
-    char thread_name[THREAD_NAME_LEN];
+    char thread_name[THREAD_NAME_LEN] = { 0 };
+    errno_t rc = -1;
     // MeshInfo("Entering into %s\n",__FUNCTION__);
 
     // Create our message server thread
@@ -3390,10 +3887,14 @@ int Mesh_Init(ANSC_HANDLE hThisObject)
     {
         MeshInfo("msgQServer thread created successfully\n");
 
-        memset( thread_name, '\0', sizeof(char) * THREAD_NAME_LEN );
-        strcpy( thread_name, "Mesh_msgQServer");
+        rc = strcpy_s(thread_name, sizeof(thread_name),  "Mesh_msgQServer");
+        if(rc != EOK)
+        {
+           ERR_CHK(rc);
+           MeshError("Error in setting Mesh_msgQServer thread_name\n");
+        }
 
-        if (pthread_setname_np(mq_server_tid, thread_name) == 0)
+        if ((rc == EOK) && (pthread_setname_np(mq_server_tid, thread_name) == 0))
         {
             MeshInfo("msgQServer thread name %s set successfully\n", thread_name);
         }
@@ -3423,8 +3924,13 @@ int Mesh_Init(ANSC_HANDLE hThisObject)
         {
             MeshInfo("Mesh_sysevent_handler thread created successfully\n");
 
-            memset( thread_name, '\0', sizeof(char) * THREAD_NAME_LEN );
-            strcpy( thread_name, "Mesh_sysevent");
+            rc = strcpy_s(thread_name, sizeof(thread_name), "Mesh_sysevent");
+            if(rc != EOK)
+            {
+                ERR_CHK(rc);
+                MeshError("Error in setting Mesh_sysevent thread_name\n");
+                return -1;
+            }
 
             if (pthread_setname_np(sysevent_tid, thread_name) == 0)
             {
@@ -3452,7 +3958,13 @@ int Mesh_Init(ANSC_HANDLE hThisObject)
 
         //memset( thread_name, '\0', sizeof(char) * THREAD_NAME_LEN );
         /* Coverity Issue Fix - CID:59861 DC.STRING_BUFFER  */
-        strncpy( thread_name,"MeshLeaseServer",sizeof(thread_name)-1);
+        rc = strcpy_s(thread_name, sizeof(thread_name), "MeshLeaseServer");
+        if(rc != EOK)
+        {
+            ERR_CHK(rc);
+            MeshError("Error in setting MeshLeaseServer thread_name\n");
+            return -1;
+        }
 
         if (pthread_setname_np(lease_server_tid, thread_name) == 0)
         {

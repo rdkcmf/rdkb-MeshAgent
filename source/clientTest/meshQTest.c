@@ -37,6 +37,7 @@
 #include <fcntl.h>
 
 #include "meshsync_msgs.h"
+#include "safec_lib_common.h"
 
 #if defined(ENABLE_MESH_SOCKETS)
 /*
@@ -61,7 +62,7 @@ static mqd_t qd_server; // msg queue server handle
 #endif
 
 extern MeshSync_MsgItem meshSyncMsgArr[];
-const int THREAD_NAME_LEN=16; //length is restricted to 16 characters, including the terminating null byte
+#define THREAD_NAME_LEN 16 //length is restricted to 16 characters, including the terminating null byte
 
 static pthread_t mq_server_tid; // server thread id
 static pthread_t mq_test_tid; // test loop thread id
@@ -105,19 +106,31 @@ static int msgQClient(void *data)
 {
     struct sockaddr_un addr;
     MeshSync rxBuf;
+    errno_t rc = -1;
 
     if ( (mq_socket = socket(AF_UNIX, SOCK_STREAM, 0)) == -1) {
       printf("socket error\n");
       return errno;
     }
 
-    memset(&addr, 0, sizeof(addr));
+    rc = memset_s(&addr, sizeof(addr), 0, sizeof(addr));
+    ERR_CHK(rc);
     addr.sun_family = AF_UNIX;
     if (*meshSocketPath == '\0') {
       *addr.sun_path = '\0';
-      strncpy(addr.sun_path+1, meshSocketPath+1, sizeof(addr.sun_path)-2);
+      rc = strcpy_s(addr.sun_path+1, sizeof(addr.sun_path)-1, meshSocketPath+1);
+      if(rc != EOK)
+      {
+          ERR_CHK(rc);
+          return rc;
+      }
     } else {
-      strncpy(addr.sun_path, meshSocketPath, sizeof(addr.sun_path)-1);
+      rc = strcpy_s(addr.sun_path, sizeof(addr.sun_path), meshSocketPath);
+      if(rc != EOK)
+      {
+          ERR_CHK(rc);
+          return rc;
+      }
     }
 
     if (connect(mq_socket, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
@@ -365,7 +378,8 @@ int Client_Init()
 {
     int status = 0;
     int thread_status = 0;
-    char thread_name[THREAD_NAME_LEN];
+    char thread_name[THREAD_NAME_LEN] = { 0 };
+    errno_t rc = -1;
 
     bRunning = true;
 
@@ -375,8 +389,12 @@ int Client_Init()
     {
         printf("msgQClient thread created successfully\n");
 
-        memset( thread_name, '\0', sizeof(char) * THREAD_NAME_LEN );
-        strcpy( thread_name, "msgQClient");
+        rc = strcpy_s( thread_name, sizeof(thread_name), "msgQClient");
+        if(rc != EOK)
+        {
+            ERR_CHK(rc);
+            return -1;
+        }
 
         if (pthread_setname_np(mq_server_tid, thread_name) == 0)
         {
@@ -399,8 +417,12 @@ int Client_Init()
     {
         printf("msgQTest thread created successfully\n");
 
-        memset( thread_name, '\0', sizeof(char) * THREAD_NAME_LEN );
-        strcpy( thread_name, "msgQTest");
+		rc = strcpy_s( thread_name, sizeof(thread_name), "msgQTest");
+        if(rc != EOK)
+        {
+            ERR_CHK(rc);
+            return -1;
+        }
 
         if (pthread_setname_np(mq_test_tid, thread_name) == 0)
         {
