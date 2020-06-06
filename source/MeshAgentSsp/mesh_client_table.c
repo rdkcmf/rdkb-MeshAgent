@@ -166,6 +166,7 @@ HashItem *HashAlloc()
  */
 HashItem *HashFind(eMeshIfaceType iface, char *mac)
 {
+        
     int index = HashMe(iface, mac);
     HashItem *item = hashTable[index].head;
     errno_t rc       = -1;
@@ -194,6 +195,13 @@ bool HashAdd(eMeshIfaceType iface, char *mac, char *host)
 {
     bool success = false;
     errno_t rc = -1;
+      /* Coerity Fix CID :69764 REVERSE_INULL */
+      if ( mac == NULL )
+      {  
+          MeshError("ERROR! mac is null!\n");
+          return false;
+      }  
+    
 
     // add client connection if it isn't already there
     if (HashFind(iface, mac) == NULL) {
