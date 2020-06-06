@@ -322,10 +322,14 @@ void Mesh_SendEthernetMac(char *mac)
 
   if(dnsmasqFd) { 
     /* Coverity Issue Fix - CID:113076 : Buffer Over Run */
-   sendto(dnsmasqFd, (const char*)sendBuff, sizeof(PodMacNotify), 0, (struct sockaddr *)&dnsserverAddr, (sizeof dnsserverAddr));
-   MeshInfo("Pod mac address sent to dnsmasq MAC: %s\n", mac);
-  } else
-  MeshError ("Error sending Pod mac address to dnsmasq, Socket not ready MAC: %s\n", mac);
+    /* Coverity Fix CID: 110417 CHECKED_RETURN */
+   if(sendto(dnsmasqFd, (const char*)sendBuff, sizeof(PodMacNotify), 0, (struct sockaddr *)&dnsserverAddr,(sizeof dnsserverAddr)) ==-1)
+     MeshError("Error sending Pod mac address to dnsmasq\n");
+   else
+     MeshInfo("Pod mac address sent to dnsmasq MAC: %s\n", mac);
+  } 
+  else
+     MeshError ("Error sending Pod mac address to dnsmasq, Socket not ready MAC: %s\n", mac);
   
   close(dnsmasqFd);
   dnsmasqFd=0;
@@ -442,7 +446,8 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
     case MESH_WIFI_AP_ADD_ACL_DEVICE:
     {
         char cmd[256] = {0};
-        sprintf(cmd, "MESH|%d|%s",
+        /*Coverity Fix: CID 57148 DC.STRING_BUFFER */
+        snprintf(cmd,sizeof(cmd), "MESH|%d|%s",
                 rxMsg.data.wifiAPAddAclDevice.index,
                 rxMsg.data.wifiAPAddAclDevice.mac
         );
@@ -573,8 +578,12 @@ static int leaseServer(void *data)
    gdoNtohl = true;
    }
    memset(serverAddr.sin_zero, '\0', sizeof serverAddr.sin_zero);
-
-   bind(Socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
+    /* Coverity Fix CID :57846 CHECKED _RETURN */
+   if( bind(Socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr)) != 0)
+   {
+       MeshError("%s-%d : Error in Binding Socket\n" , __FUNCTION__, __LINE__);
+       return -1;
+   } 
 
    addr_size = sizeof serverStorage;
    
@@ -652,6 +661,8 @@ static int msgQServer(void *data)
     //bind the socket
     if (bind(master_socket, (struct sockaddr *)&address, sizeof(address))<0)
     {
+       /* Coverity  Fix CID:54336 RESOURCE_LEAK */
+        close(master_socket);
         MeshError("Mesh Queue socket bind failure\n");
         return errno;
     }
@@ -990,7 +1001,8 @@ bool Mesh_SetUrl(char *url, bool init)
         MeshInfo("Meshwifi URL is set to %s\n", g_pMeshAgent->meshUrl);
 
         // Send sysevent notification
-        sprintf(outBuf, "MESH|%s", url);
+        /* Coverity Fix CID:66684 DC.STRING_BUFFER */
+        snprintf(outBuf,sizeof(outBuf), "MESH|%s", url);
         Mesh_SyseventSetStr(meshSyncMsgArr[MESH_URL_CHANGE].sysStr, outBuf, 0, false);
     }
 
@@ -1047,8 +1059,11 @@ bool Mesh_SetMeshState(eMeshStateType state, bool init, bool commit)
         g_pMeshAgent->meshState = state;
         
         if(commit)
-         Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, meshStateArr[state].mStr, true);
-
+        {
+         /* Coverity Fix CID:55887 CHECKED_RETURN */
+         if( Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, meshStateArr[state].mStr, true) != ANSC_STATUS_SUCCESS )
+            MeshError(" %s-%d Failed in  Mesh_SysCfgSetStr()\n",__FUNCTION__,__LINE__);       
+        }
         // Notify plume
         // Set sync message type
         mMsg.msgType = MESH_STATE_CHANGE;
@@ -1058,7 +1073,8 @@ bool Mesh_SetMeshState(eMeshStateType state, bool init, bool commit)
         msgQSend(&mMsg);
 
         // Send sysevent notification
-        sprintf(outBuf, "MESH|%s", meshStateArr[state].mStr);
+        /* Coverity Fix CID: 71888 DC.STRING_BUFFER */
+        snprintf(outBuf,sizeof(outBuf), "MESH|%s", meshStateArr[state].mStr);
         Mesh_SyseventSetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, outBuf, 0, true);
     }
 
@@ -1569,9 +1585,11 @@ static void handleMeshEnable(void *Args)
             g_pMeshAgent->meshEnable = enable;
             g_pMeshAgent->meshStatus = (enable?MESH_WIFI_STATUS_INIT:MESH_WIFI_STATUS_OFF);
             // Send sysevent notification
-            sprintf(outBuf, "MESH|%s", (enable?"true":"false"));
+            /*Coverity Fix CID:69958 DC.STRING_BUFFER */
+            snprintf(outBuf,sizeof(outBuf), "MESH|%s", (enable?"true":"false"));
             Mesh_SyseventSetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, outBuf, 0, true);
-            sprintf(outBuf, "MESH|%s", meshWifiStatusArr[(enable?MESH_WIFI_STATUS_INIT:MESH_WIFI_STATUS_OFF)].mStr);
+            /*Coverity Fix CID:69958 DC.STRING_BUFFER */
+            snprintf(outBuf,sizeof(outBuf), "MESH|%s", meshWifiStatusArr[(enable?MESH_WIFI_STATUS_INIT:MESH_WIFI_STATUS_OFF)].mStr);
             Mesh_SyseventSetStr(meshSyncMsgArr[MESH_WIFI_STATUS].sysStr, outBuf, 0, true);
         } else {
             MeshError("Error %d %s Mesh Wifi\n", err, (enable?"enabling":"disabling"));
@@ -1715,7 +1733,8 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
             unsigned char outBuf[128];
             strncpy(pMyObject->meshUrl, out_val, sizeof(pMyObject->meshUrl));
             // Send sysevent notification
-            sprintf(outBuf, "MESH|%s", out_val);
+            /* Coverity Fix CID:65429 DC.STRING_BUFFER */
+            snprintf(outBuf,sizeof(outBuf), "MESH|%s", out_val);
             Mesh_SyseventSetStr(meshSyncMsgArr[MESH_URL_CHANGE].sysStr, outBuf, 0, false);
         }
     }
@@ -2387,7 +2406,8 @@ static void *Mesh_sysevent_handler(void *data)
                             valFound = true;
                             break;
                         case 2:
-                            MeshInfo("ssid reveived\n", token);
+                            /*Coverity Fix CID:57710 PW.TOO_MANY_PRINTF_ARGS */
+                            MeshInfo("ssid reveived:\n");
                             strncpy(mMsg.data.wifiSSIDName.ssid, token, sizeof(mMsg.data.wifiSSIDName.ssid));
                             valFound = true;
                             break;
@@ -3242,8 +3262,8 @@ int Mesh_Init(ANSC_HANDLE hThisObject)
         MeshInfo("leaseServer thread created successfully\n");
 
         //memset( thread_name, '\0', sizeof(char) * THREAD_NAME_LEN );
-        /* Coverity Issue Fix - CID:59614 */
-        strcpy( thread_name, "MeshLeaseServer");
+        /* Coverity Issue Fix - CID:59861 DC.STRING_BUFFER  */
+        strncpy( thread_name,"MeshLeaseServer",sizeof(thread_name)-1);
 
         if (pthread_setname_np(lease_server_tid, thread_name) == 0)
         {

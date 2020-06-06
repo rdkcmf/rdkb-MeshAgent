@@ -232,7 +232,8 @@ int svcagt_get_service_state (const char *svc_name)
 	int exit_code;
 	bool running;
 	char cmdbuf[128] = {0};
-	sprintf (cmdbuf, "%s is-active %s.service", svcagt_systemctl_cmd, svc_name);
+        /* Coverity Fix CID :62962 DC.STRING_BUFFER  */
+	snprintf (cmdbuf,sizeof(cmdbuf), "%s is-active %s.service", svcagt_systemctl_cmd, svc_name);
 	exit_code = system (cmdbuf);
 	if (exit_code == -1) {
 		CcspTraceError(("Error invoking systemctl command, errno: %s\n", strerror(errno)));
@@ -259,7 +260,8 @@ int svcagt_set_service_state (const char *svc_name, bool state)
 	}
 
 	MeshInfo(("%s %s\n", start_stop_msg, svc_name));
-	sprintf (cmdbuf, "%s %s %s.service", 
+        /* Coverity Fix CID:58223 DC.STRING_BUFFER */
+	snprintf (cmdbuf,sizeof(cmdbuf), "%s %s %s.service", 
 		svcagt_systemctl_cmd, cmd_option, svc_name); 
 	exit_code = system (cmdbuf);
 	if (exit_code != 0)

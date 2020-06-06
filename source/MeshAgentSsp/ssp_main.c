@@ -320,10 +320,11 @@ void Cosa_print_uptime_meshagent( void  )
                 {
                     if ( acArmArpingIP[ 0 ] != '\0' )
                     {
-                        CcspTraceInfo(("%s Reported an ARM IP of %s \n", __FUNCTION__, acArmArpingIP));
-                        _ansc_sprintf(buf, "/usr/bin/rpcclient %s \"print_uptime boot_to_meshagent_uptime\"", acArmArpingIP);
-                        system(buf);
-                    }
+                     CcspTraceInfo(("%s Reported an ARM IP of %s \n", __FUNCTION__, acArmArpingIP));
+                     /*Coverity Fix CID:64718 DC.STRING_BUFFER */
+                     snprintf(buf,sizeof(buf), "/usr/bin/rpcclient %s \"print_uptime boot_to_meshagent_uptime\"", acArmArpingIP);
+                     system(buf); 
+                   }
                 }
 	    }
 	}
