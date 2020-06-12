@@ -29,6 +29,8 @@ int main(int argc, char* argv[])
     LOGInit();
     
     MeshInfo("Registering MeshAgent component '%s' with CR ..\n", MESHAGENT_COMPONENT_NAME);
+
+    t2_init("mesh-agent");
     
     msgBusInit(MESHAGENT_COMPONENT_NAME);
        
