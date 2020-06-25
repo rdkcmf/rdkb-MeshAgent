@@ -33,6 +33,7 @@ _COSA_DATAMODEL_MESHAGENT
     BOOL                        PodEthernetBackhaulEnable;
     BOOL                        OvsEnable;
     BOOL                        GreAccEnable;
+    BOOL                        OpensyncEnable;
     UCHAR                       meshUrl[256];
     eMeshWifiStatusType         meshStatus;
     eMeshStateType              meshState;

@@ -1849,6 +1849,30 @@ bool meshSetOVSSyscfg(bool enable)
     return success;
 }
 
+bool OpensyncSetSyscfg(bool enable)
+{
+    int i =0;
+    bool success = false;
+    MeshInfo("%s Setting Opensync enable in syscfg to %d\n", __FUNCTION__, enable);
+    if(Mesh_SysCfgSetStr("opensync_enable", (enable?"true":"false"), true) != 0) {
+         MeshInfo("Failed to set the Opensync Enable in syscfg, retrying 5 times\n");
+         for(i=0; i<5; i++) {
+         if(!Mesh_SysCfgSetStr("opensync_enable", (enable?"true":"false"), true)) {
+           MeshInfo("opensync syscfg set passed in %d attempt\n", i+1);
+	   success = true;
+           break;
+         }
+         else
+          MeshInfo("opensync syscfg set retrial failed in %d attempt\n", i+1);
+      }
+   }
+   else {
+    MeshInfo("opensync enable set in the syscfg successfully\n");
+    success = true;
+   }
+   return success;
+}
+
 void meshSetSyscfg(bool enable, bool commitSyscfg)
 {
     int i =0;
@@ -2116,6 +2140,32 @@ static void Mesh_ModifyPodTunnelVlan(MeshTunnelSetVlan *conf)
     UNREFERENCED_PARAMETER(conf);
     MeshInfo("%s: OVSAgent is not integrated in this platform yet\n", __FUNCTION__);
 #endif
+}
+
+bool Opensync_Set(bool enable, bool init, bool commitSyscfg) {
+    if (init || Mesh_GetEnabled("opensync_enable") != enable)
+    {
+        if(enable && !Mesh_GetEnabled("mesh_ovs_enable")) {
+            MeshWarning("OVS is disabled, so we cannt able to enable Opensync\n");
+            enable = false;
+	}
+        if (commitSyscfg && !OpensyncSetSyscfg(enable) ) {
+            MeshError("Unable to %s Opensync\n", enable?"enable":"disable");
+	    return false;
+        }
+        g_pMeshAgent->OpensyncEnable = enable;
+        //Send this as an RFC update to plume manager
+        if(enable) {
+            MeshInfo("Opensync_RFC_changed_to_enabled\n");
+	    MeshInfo("Opensync will be effective after reboot\n");
+	}
+        else
+        {
+            MeshInfo("Opensync_RFC_changed_to_disabled\n");
+	}
+        Mesh_sendRFCUpdate("Opensync.Enable", enable ? "true" : "false", rfc_boolean);
+    }
+    return TRUE;
 }
 
 void* handleMeshEnable(void *Args)
@@ -2540,6 +2590,35 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
                MeshInfo("Ethernet Bhaul status error from syscfg , setting default FALSE\n");
                Mesh_SetMeshEthBhaul(false,true,true);
            }
+        }
+    }
+    out_val[0]='\0';
+
+    if(Mesh_SysCfgGetStr("opensync_enable", out_val, sizeof(out_val)) != 0)
+    {
+        MeshInfo("Syscfg error, Setting opensync mode to default\n");
+        Opensync_Set(false,true,true);
+    }
+    else
+    {
+        rc = strcmp_s("true",strlen("true"),out_val,&ind);
+        ERR_CHK(rc);
+        if((ind ==0 ) && (rc == EOK)) {
+           MeshInfo("Setting initial Opensync mode to true\n");
+           Opensync_Set(true,true,false);
+        }
+        else
+        {
+           rc = strcmp_s("false",strlen("false"),out_val,&ind);
+	   ERR_CHK(rc);
+	   if((ind ==0 ) && (rc == EOK)) {
+               MeshInfo("Setting initial Opensync mode to false\n");
+               Opensync_Set(false,true,false);
+	   } else {
+               Opensync_Set(false,true,true);
+               MeshInfo("Opensync status error from syscfg , setting default\n");
+
+	   }
         }
     }
 

@@ -22,7 +22,7 @@ ConditionPathExists=/tmp/wifi_initialized
 
 [Service]
 Type=oneshot
-WorkingDirectory=/usr/plume
+WorkingDirectory=/usr/ccsp/wifi
 
 ExecStartPre=/bin/echo "Mesh Wifi Starting"
 ExecStart=/usr/ccsp/wifi/handle_mesh start

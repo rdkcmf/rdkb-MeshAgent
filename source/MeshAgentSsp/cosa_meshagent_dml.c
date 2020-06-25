@@ -178,19 +178,23 @@ MeshAgent_GetParamBoolValue
         *pBool = g_pMeshAgent->meshEnable;
         return TRUE;
     }
-    else
+    rc = strcmp_s("PodEthernetBackhaulEnable",strlen("PodEthernetBackhaulEnable"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
-        rc = strcmp_s("PodEthernetBackhaulEnable",strlen("PodEthernetBackhaulEnable"),ParamName,&ind);
-        ERR_CHK(rc);
-        if( (ind == 0) && (rc == EOK))
-        {
-            MeshInfo("Pod ethernet bhaul mode get\n");
-            *pBool = g_pMeshAgent->PodEthernetBackhaulEnable;
-            return TRUE; 
-        }
-        else
-            MeshWarning("Unsupported parameter '%s'\n", ParamName);
+        MeshInfo("Pod ethernet bhaul mode get\n");
+        *pBool = g_pMeshAgent->PodEthernetBackhaulEnable;
+        return TRUE; 
     }
+    rc = strcmp_s("Opensync",strlen("Opensync"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
+    {
+	MeshInfo("Opensync Enable get\n");
+	*pBool = g_pMeshAgent->OpensyncEnable;
+	return TRUE;
+    }
+        MeshWarning(("Unsupported parameter '%s'\n"), ParamName);
     return FALSE;
 }
 
@@ -299,6 +303,7 @@ OVS_GetParamBoolValue
      MeshWarning("Unsupported parameter '%s'\n", ParamName);
     return FALSE;
 }
+
 
 /**********************************************************************  
 
@@ -561,19 +566,23 @@ MeshAgent_SetParamBoolValue
         Mesh_SetEnabled(bValue, false, true);
         return TRUE;
     }
-    else
+    rc = strcmp_s("PodEthernetBackhaulEnable",strlen("PodEthernetBackhaulEnable"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
     {
-        rc = strcmp_s("PodEthernetBackhaulEnable",strlen("PodEthernetBackhaulEnable"),ParamName,&ind);
-        ERR_CHK(rc);
-        if( (ind == 0) && (rc == EOK))
-        {
-            MeshInfo("Pod ethernet bhaul mode set\n");
-            Mesh_SetMeshEthBhaul(bValue,false,true);
-            return TRUE; 
-        }    
-        else
-            MeshWarning("Unsupported parameter '%s'\n", ParamName);
+        MeshInfo("Pod ethernet bhaul mode set\n");
+        Mesh_SetMeshEthBhaul(bValue,false,true);
+        return TRUE; 
+    }    
+    rc = strcmp_s("Opensync",strlen("Opensync"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
+    {
+        MeshInfo("Opensync set\n");
+        Opensync_Set(bValue,false,true);
+	return TRUE;
     }
+    MeshWarning(("Unsupported parameter '%s'\n"), ParamName);
     return FALSE;
 }
 
@@ -690,6 +699,8 @@ OVS_SetParamBoolValue
      MeshWarning("Unsupported parameter '%s'\n", ParamName);
     return FALSE;
 }
+
+
 
 /**********************************************************************
 

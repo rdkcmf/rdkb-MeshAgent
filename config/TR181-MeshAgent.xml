@@ -138,6 +138,12 @@
                   <syntax>bool</syntax>
                   <writable>true</writable>
                 </parameter>
+                <parameter>
+                  <name>Opensync</name>
+                  <type>boolean</type>
+                  <syntax>bool</syntax>
+                  <writable>true</writable>
+                </parameter>
               </parameters>
             </object>
           </objects>
