@@ -38,6 +38,7 @@
 #include "meshagent.h"
 #include "ccsp_custom_logs.h"
 #include "safec_lib_common.h"
+#include "webconfig_framework.h"
 
 /*----------------------------------------------------------------------------*/
 /*                                   Macros                                   */
@@ -168,6 +169,7 @@ int msgBusInit(const char *pComponentName)
         exit(1);
     }
 
+    check_component_crash("/tmp/meshagent_initialized");
     system("touch /tmp/meshagent_initialized");
     MeshInfo("msgBusInit - /tmp/meshagent_initialized created\n");
     pthread_t tid;

@@ -26,6 +26,8 @@
 #include "syslog.h"
 #include "ccsp_trace.h"
 #include "safec_lib_common.h"
+#include <msgpack.h>
+#include "helpers.h"
 
 #define DEBUG_INI_NAME  "/etc/debug.ini"
 
@@ -311,6 +313,13 @@ MeshAgent_GetParamStringValue
        // trap the value but don't return anything.
        return 0;
     }
+    rc = strcmp_s("Data",strlen("Data"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
+    {
+       MeshError(("Data Get Not supported\n"));
+       return 0;
+    }
 
 	MeshError("Unsupported Namespace:%s\n", ParamName);
 	return -1;
@@ -484,7 +493,8 @@ MeshAgent_SetParamBoolValue
               if( g_pMeshAgent->PodEthernetBackhaulEnable)
               {
                 MeshInfo("Send Eth Bhaul disable notification to plume\n");
-                Mesh_SetMeshEthBhaul(false,true); 
+                Mesh_SendEthernetMac("00:00:00:00:00:00");
+                //Mesh_SetMeshEthBhaul(false,true); 
               } 
          }
 
@@ -737,6 +747,121 @@ MeshAgent_SetParamStringValue
         Mesh_UpdateConnectedDevice(pMac, pIface, pHost, pStatus);
 #endif
         return TRUE;
+    }
+    rc = strcmp_s("Data", strlen("Data"),ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
+    {
+        char * decodeMsg =NULL;
+        int decodeMsgSize =0;
+        int size =0;
+        int i=0;
+
+        msgpack_zone mempool;
+        msgpack_object deserialized;
+        msgpack_unpack_return unpack_ret;
+        decodeMsgSize = b64_get_decoded_buffer_size(strlen(pString));
+        decodeMsg = (char *) malloc(sizeof(char) * decodeMsgSize);
+        size = b64_decode( pString, strlen(pString), decodeMsg );
+        MeshInfo("base64 decoded data contains %d bytes\n",size);
+
+        msgpack_zone_init(&mempool, 2048);
+        unpack_ret = msgpack_unpack(decodeMsg, size, NULL, &mempool, &deserialized);
+
+        switch(unpack_ret)
+        {
+            case MSGPACK_UNPACK_SUCCESS:
+                MeshInfo("MSGPACK_UNPACK_SUCCESS :%d\n",unpack_ret);
+                break;
+            case MSGPACK_UNPACK_EXTRA_BYTES:
+                MeshInfo("MSGPACK_UNPACK_EXTRA_BYTES :%d\n",unpack_ret);
+                break;
+            case MSGPACK_UNPACK_CONTINUE:
+                MeshInfo("MSGPACK_UNPACK_CONTINUE :%d\n",unpack_ret);
+                break;
+            case MSGPACK_UNPACK_PARSE_ERROR:
+                MeshInfo("MSGPACK_UNPACK_PARSE_ERROR :%d\n",unpack_ret);
+                break;
+            case MSGPACK_UNPACK_NOMEM_ERROR:
+                MeshInfo("MSGPACK_UNPACK_NOMEM_ERROR :%d\n",unpack_ret);
+                break;
+            default:
+                MeshInfo("Message Pack decode failed with error: %d\n", unpack_ret);
+        }
+
+        msgpack_zone_destroy(&mempool);
+        MeshInfo("End message pack decode\n");
+        //End of msgpack decoding
+
+        if(unpack_ret == MSGPACK_UNPACK_SUCCESS)
+        {
+            meshbackhauldoc_t *mb;
+            mb = meshbackhauldoc_convert( decodeMsg, size+1 );
+
+            if ( decodeMsg )
+            {
+                free(decodeMsg);
+                decodeMsg = NULL;
+            }
+
+            if (NULL != mb)
+            {
+                MeshInfo("mb->mesh_enable is %s\n", (1 == mb->mesh_enable)?"true":"false");
+                MeshInfo("mb->ethernetbackhaul_enable is %s\n", (1 == mb->ethernetbackhaul_enable)?"true":"false");
+                MeshInfo("mb->subdoc_name is %s\n", mb->subdoc_name);
+                MeshInfo("mb->version is %lu\n", (unsigned long)mb->version);
+                MeshInfo("mb->transaction_id is %d\n", mb->transaction_id);
+                MeshInfo("Mesh configuration received\n");
+
+                execData *execDataMb = NULL ;
+
+                execDataMb = (execData*) malloc (sizeof(execData));
+
+                if ( execDataMb != NULL )
+                {
+                    memset(execDataMb, 0, sizeof(execData));
+
+                    execDataMb->txid = mb->transaction_id;
+                    execDataMb->version = mb->version;
+
+                    strncpy(execDataMb->subdoc_name,"mesh",sizeof(execDataMb->subdoc_name)-1);
+                    execDataMb->user_data = (void*) mb ;
+                    execDataMb->calcTimeout = NULL ;
+                    execDataMb->executeBlobRequest = Process_MB_WebConfigRequest;
+                    execDataMb->rollbackFunc = rollback_MeshBackhaul ;
+                    execDataMb->freeResources = freeResources_MeshBackhaul ;
+
+                    PushBlobRequest(execDataMb);
+
+                    MeshInfo("PushBlobRequest complete\n");
+
+                    return TRUE;
+
+                }
+                else
+                {
+                    MeshInfo("execData memory allocation failed\n");
+                    meshbackhauldoc_destroy( mb );
+
+                    return FALSE;
+
+                }
+            }
+            return TRUE;
+
+        }
+        else
+        {
+            if ( decodeMsg )
+            {
+                free(decodeMsg);
+                decodeMsg = NULL;
+            }
+            MeshInfo("Corrupted Mesh value\n");
+            return FALSE;
+        }
+        return TRUE;
+
     }
 
     MeshError("Unsupported Namespace:%s\n", ParamName);

@@ -50,6 +50,7 @@
 #include "meshagent.h"
 #include "mesh_client_table.h"
 #include "ssp_global.h"
+#include "cosa_webconfig_api.h"
 
 // TELEMETRY 2.0 //RDKB-26019
 #include <telemetry_busmessage_sender.h>
@@ -68,6 +69,7 @@
 const char meshSocketPath[] = MESH_SOCKET_PATH_NAME;
 static int clientSockets[MAX_CONNECTED_CLIENTS] = {0};
 static int clientSocketsMask = 0; //Prash
+static int meshError = MB_OK;
 #else
 /*
  * Message Queues
@@ -110,6 +112,7 @@ const char urlOld[] = "NOC-URL-DEV";
 const char urlDefault[] = "NOC-URL-PROD";
 const char meshServiceName[] = "meshwifi";
 const char meshDevFile[] = "/nvram/mesh-dev.flag";
+pthread_mutex_t mesh_handler_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define _DEBUG 1
 const int THREAD_NAME_LEN=16; //length is restricted to 16 characters, including the terminating null byte
 
@@ -1596,30 +1599,58 @@ bool Mesh_SetOVS(bool enable, bool init)
     }
     return TRUE;
 }
-static void handleMeshEnable(void *Args)
+
+int getMeshErrorCode()
+{
+    return meshError;
+}
+
+void handleMeshEnable(void *Args)
 {
 	bool success = TRUE;
+        bool enable = FALSE;
 	unsigned char outBuf[128];
-        bool enable = (bool)Args;
+        static bool last_set = FALSE;
+        int error = MB_OK;
         int err = 0;
         int i = 0;
-        pthread_detach(pthread_self());
+        unsigned char bit_mask =  (unsigned char) Args;
+
+        pthread_mutex_lock(&mesh_handler_mutex);
+        enable = (bit_mask & 0x02) ? TRUE : FALSE;
+        if (bit_mask & 0x01)
+        {
+            pthread_detach(pthread_self());
+        }
+        MeshInfo("last_set= %d, enable = %d\n",last_set,enable);
+        if(last_set == enable)
+        {
+            MeshInfo("Skipping mesh redundant set\n");
+            meshError = MB_OK;
+            pthread_mutex_unlock(&mesh_handler_mutex);
+            return;
+        }
 
 	 if (enable) {
             // This will only work if this service is started *AFTER* CcspWifi
             // If the service is not running, start it
             if(!radio_check() || is_bridge_mode_enabled()) {
               MeshError("Mesh Pre-check conditions failed, setting mesh wifi to disabled \n");
+              error =  MB_ERROR_PRECONDITION_FAILED;
               meshSetSyscfg(0);
+              pthread_mutex_unlock(&mesh_handler_mutex);
               return FALSE;
             }
 	    if(is_band_steering_enabled()) {
                    if(set_wifi_boolean_enable("Device.WiFi.X_RDKCENTRAL-COM_BandSteering.Enable", "false")==FALSE) {
                         MeshError(("MESH_ERROR:Fail to enable Mesh because fail to turn off Band Steering\n"));
+                        error =  MB_ERROR_BANDSTEERING_ENABLED;
                         meshSetSyscfg(0);
+                        pthread_mutex_unlock(&mesh_handler_mutex);
                         return FALSE;
                    }
             }
+
             MeshInfo("Checking if Mesh APs are enabled or disabled\n");
             if(is_SSID_enabled())
                 MeshInfo("Mesh interfaces are up\n");
@@ -1634,7 +1665,8 @@ static void handleMeshEnable(void *Args)
                 if ((err = svcagt_set_service_state(meshServiceName, true)) != 0)
                 {
                     MeshError("meshwifi service failed to run, igonoring the mesh enablement\n");
-		    t2_event_d("WIFI_ERROR_meshwifiservice_failure", 1); 
+		    t2_event_d("WIFI_ERROR_meshwifiservice_failure", 1);
+                    error = MB_ERROR_MESH_SERVICE_START_FAIL;
                     meshSetSyscfg(0);
                     success = FALSE;
                 }
@@ -1648,6 +1680,7 @@ static void handleMeshEnable(void *Args)
                 if ((err = svcagt_set_service_state(meshServiceName, false)) != 0)
                 {
                     meshSetSyscfg(0);
+                    error = MB_ERROR_MESH_SERVICE_STOP_FAIL;
                     success = FALSE;
                 }
             }
@@ -1674,6 +1707,13 @@ static void handleMeshEnable(void *Args)
             	t2_event_d("SYS_INFO_MESHWIFI_DISABLED", 1);
 	    }
         }
+   last_set = enable;
+   if (!(bit_mask & 0x01))
+   {
+       meshError = error;
+   }
+   pthread_mutex_unlock(&mesh_handler_mutex);
+
    return NULL;
 }
 
@@ -1686,13 +1726,16 @@ bool Mesh_SetEnabled(bool enable, bool init)
 {
     // MeshInfo("Entering into %s\n",__FUNCTION__);
     bool success = TRUE;
+    unsigned char bit_mask = 1; 
 
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) != enable)
     {
         meshSetSyscfg(enable);
  	pthread_t tid;
-	pthread_create(&tid, NULL, &handleMeshEnable, (void*)enable);
+        if(enable)
+            bit_mask = bit_mask | 0x2;
+	pthread_create(&tid, NULL, &handleMeshEnable, (void*)bit_mask);
 
     }
 
