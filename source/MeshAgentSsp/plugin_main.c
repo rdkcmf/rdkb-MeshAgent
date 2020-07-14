@@ -72,6 +72,9 @@ COSA_Init
     {
     	  MeshInfo("Initializing CosaMeshAgent\n");
     	  CosaMeshAgentInitialize(g_pMeshAgent);
+          MeshInfo(("  Initializing WebConfig Framework!\n"));
+          webConfigFrameworkInit();
+          MeshInfo(("  Initializing WebConfig Framework done!\n"));
     }
     else
     {

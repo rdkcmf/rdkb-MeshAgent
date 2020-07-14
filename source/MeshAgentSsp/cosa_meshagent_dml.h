@@ -23,6 +23,8 @@
 
 #include "slap_definitions.h"
 #include "meshsync_msgs.h"
+#include "cosa_webconfig_api.h"
+#include "webconfig_framework.h"
 
 ANSC_STATUS
 CosaDmlServiceManagerInit
