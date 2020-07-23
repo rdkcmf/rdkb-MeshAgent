@@ -1488,6 +1488,26 @@ void meshSetEthbhaulSyscfg(bool enable)
     MeshInfo("eth bhaul enable set in the syscfg successfully\n");
 }
 
+void meshSetGreAccSyscfg(bool enable)
+{
+    int i =0;
+
+    MeshInfo("%s Setting GRE_ACC enable in syscfg to %d\n", __FUNCTION__, enable);
+    if(Mesh_SysCfgSetStr("mesh_gre_acc_enable", (enable?"true":"false"), true) != 0) {
+         MeshInfo("Failed to set the GRE_ACC Enable in syscfg, retrying 5 times\n");
+         for(i=0; i<5; i++) {
+         if(!Mesh_SysCfgSetStr("mesh_gre_acc_enable", (enable?"true":"false"), true)) {
+           MeshInfo("GRE_ACC syscfg set passed in %d attempt\n", i+1);
+           break;
+         }
+         else
+          MeshInfo("GRE_ACC syscfg set retrial failed in %d attempt\n", i+1);
+      }
+   }
+   else
+    MeshInfo("GRE_ACC enable set in the syscfg successfully\n");
+}
+
 void meshSetOVSSyscfg(bool enable)
 {
     int i =0;
@@ -1579,6 +1599,30 @@ bool Mesh_SetMeshEthBhaul(bool enable, bool init)
 }
 
 /**
+ * @brief Mesh Agent GREAcceleration Set Enable/Disable
+ *
+ * This function will enable/disable the GRE acceleration mode
+ */
+bool Mesh_SetGreAcc(bool enable, bool init)
+{
+    // If the enable value is different or this is during setup - make it happen.
+    if (init || Mesh_GetEnabled("mesh_gre_acc_enable") != enable)
+    {
+        if ( (enable == TRUE) && (Mesh_GetEnabled("mesh_ovs_enable") == TRUE))
+            return FALSE;
+        meshSetGreAccSyscfg(enable);
+        g_pMeshAgent->GreAccEnable = enable;
+        //Send this as an RFC update to plume manager
+        if(enable)
+         MeshInfo("GreAcc_RFC_changed_to_enabled\n");
+        else
+         MeshInfo("GreAcc_changed_to_disabled\n");
+        Mesh_sendRFCUpdate("GRE_ACC.Enable", enable ? "true" : "false", rfc_boolean);
+    }
+    return TRUE;
+}
+
+/**
  * @brief Mesh Agent OpenvSwitch Set Enable/Disable
  *
  * This function will enable/disable the OpenvSwitch mode
@@ -1588,6 +1632,8 @@ bool Mesh_SetOVS(bool enable, bool init)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_ovs_enable") != enable)
     {
+	if ( (enable == TRUE) && (Mesh_GetEnabled("mesh_gre_acc_enable") == TRUE))
+            return FALSE;
         meshSetOVSSyscfg(enable);
         g_pMeshAgent->OvsEnable = enable;
         //Send this as an RFC update to plume manager
@@ -1971,6 +2017,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
        if (strncmp(out_val, "true", 4) == 0) {
            MeshInfo("Setting initial OVS mode to true\n");
            Mesh_SetOVS(true,true);
+           g_pMeshAgent->OvsEnable = true;
        } else if (strncmp(out_val, "false", 5) == 0) {
            MeshInfo("Setting initial OVS mode to false\n");
            Mesh_SetOVS(false,true);
@@ -1980,6 +2027,24 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         Mesh_SetOVS(false,true);
       }
     }
+     out_val[0]='\0';
+     if(Mesh_SysCfgGetStr("mesh_gre_acc_enable", out_val, sizeof(out_val)) != 0)
+     {
+             MeshInfo("Syscfg error, Setting gre acc mode to default\n");
+             Mesh_SetGreAcc(false,true);
+     } else {
+          if (strncmp(out_val, "true", 4) == 0) {
+               MeshInfo("Setting initial gre acc mode to true\n");
+               Mesh_SetGreAcc(true,true);
+               g_pMeshAgent->GreAccEnable = true;
+          } else if (strncmp(out_val, "false", 5) == 0) {
+               MeshInfo("Setting initial gre acc mode to false\n");
+               Mesh_SetGreAcc(false,true);
+          } else {
+               MeshInfo("gre acc status error from syscfg , setting default\n");
+               Mesh_SetGreAcc(false,true);
+          }
+     }
     // MeshInfo("Exiting from %s\n",__FUNCTION__);
 }
 

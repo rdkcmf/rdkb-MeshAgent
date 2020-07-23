@@ -41,9 +41,11 @@ CosaDmlServiceManagerInit
 
     *  MeshAgent_GetParamBoolValue
     *  OVS_GetParamBoolValue
+    *  GreAcc_GetParamBoolValue
     *  MeshAgent_GetParamStringValue
     *  MeshAgent_SetParamBoolValue
     *  OVS_SetParamBoolValue
+    *  GreAcc_SetParamBoolValue
     *  MeshAgent_SetParamStringValue
     *  MeshAgent_Validate
     *  MeshAgent_Commit
@@ -60,6 +62,14 @@ MeshAgent_GetParamBoolValue
 
 BOOL
 OVS_GetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL*                       pBool
+    );
+
+BOOL
+GreAcc_GetParamBoolValue
     (
         ANSC_HANDLE                 hInsContext,
         char*                       ParamName,
@@ -101,6 +111,14 @@ MeshAgent_SetParamBoolValue
 
 BOOL
 OVS_SetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL                        bValue
+    );
+
+BOOL
+GreAcc_SetParamBoolValue
     (
         ANSC_HANDLE                 hInsContext,
         char*                       ParamName,
