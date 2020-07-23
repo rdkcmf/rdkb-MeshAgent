@@ -54,8 +54,10 @@ COSA_Init
 
 
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_GetParamBoolValue",    MeshAgent_GetParamBoolValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "GreAcc_GetParamBoolValue",       GreAcc_GetParamBoolValue);
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "OVS_GetParamBoolValue",          OVS_GetParamBoolValue);
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_SetParamBoolValue",    MeshAgent_SetParamBoolValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "GreAcc_SetParamBoolValue",       GreAcc_SetParamBoolValue);
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "OVS_SetParamBoolValue",          OVS_SetParamBoolValue);
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_GetParamStringValue",  MeshAgent_GetParamStringValue);
     pPlugInfo->RegisterFunction(pPlugInfo->hContext, "MeshAgent_SetParamStringValue",  MeshAgent_SetParamStringValue);

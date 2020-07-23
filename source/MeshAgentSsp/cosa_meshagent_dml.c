@@ -116,6 +116,8 @@ void _MESHAGENT_LOG(unsigned int level, const char *msg, ...)
     *  MeshAgent_GetParamUlongValue
     *  MeshAgent_SetParamBoolValue
     *  MeshAgent_SetParamStringValue
+    *  GreAcc_GetParamBoolValue
+    *  GreAcc_SetParamBoolValue
     *  OVS_GetParamBoolValue
     *  OVS_SetParamBoolValue
     *  MeshAgent_Validate
@@ -185,6 +187,57 @@ MeshAgent_GetParamBoolValue
         else
             MeshWarning(("Unsupported parameter '%s'\n", ParamName));
     }
+    return FALSE;
+}
+
+/**********************************************************************
+
+    caller:     owner of this object
+
+    prototype:
+
+        BOOL
+        GreAcc_GetParamBoolValue
+            (
+                ANSC_HANDLE                 hInsContext,
+                char*                       ParamName,
+                BOOL*                       pBool
+            );
+
+    description:
+
+        This function is called to retrieve Boolean parameter value for RFC GRE Acceleration;
+
+    argument:   ANSC_HANDLE                 hInsContext,
+                The instance handle;
+
+                char*                       ParamName,
+                The parameter name;
+
+                BOOL*                       pBool
+                The buffer of returned boolean value;
+
+    return:     TRUE if succeeded.
+
+**********************************************************************/
+
+BOOL
+GreAcc_GetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL*                       pBool
+    )
+{
+    /* check the parameter name and return the corresponding value */
+    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
+    if( AnscEqualString(ParamName, "Enable", TRUE))
+    {
+        *pBool = g_pMeshAgent->GreAccEnable;
+        return TRUE;
+    }
+    else
+     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
     return FALSE;
 }
 
@@ -524,6 +577,61 @@ MeshAgent_SetParamBoolValue
     prototype:
 
         BOOL
+        GreAcc_SetParamBoolValue
+            (
+                ANSC_HANDLE                 hInsContext,
+                char*                       ParamName,
+                BOOL                        bValue
+            );
+
+    description:
+
+        This function is called to set BOOL parameter value for GRE Acceleration;
+
+    argument:   ANSC_HANDLE                 hInsContext,
+                The instance handle;
+
+                char*                       ParamName,
+                The parameter name;
+
+                BOOL                        bValue
+                The updated BOOL value;
+
+    return:     TRUE if succeeded.
+
+**********************************************************************/
+BOOL
+GreAcc_SetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL                        bValue
+    )
+{
+    errno_t rc = -1;
+    int ind = -1;
+    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
+
+    rc = strcmp_s("Enable",strlen("Enable"), ParamName,&ind);
+    ERR_CHK(rc);
+    if( (ind == 0) && (rc == EOK))
+    {
+     MeshInfo("Gre Acc mode set\n");
+     return Mesh_SetGreAcc(bValue,false);
+    }
+    else
+     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    return FALSE;
+}
+
+
+/**********************************************************************
+
+    caller:     owner of this object
+
+    prototype:
+
+        BOOL
         OVS_SetParamBoolValue
             (
                 ANSC_HANDLE                 hInsContext,
@@ -564,8 +672,7 @@ OVS_SetParamBoolValue
     if( (ind == 0) && (rc == EOK))
     {
      MeshInfo("OVS mode set\n");
-     Mesh_SetOVS(bValue,false);
-     return TRUE; 
+     return Mesh_SetOVS(bValue,false);
     }
     else
      MeshWarning(("Unsupported parameter '%s'\n", ParamName));
