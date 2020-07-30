@@ -595,7 +595,7 @@ static int leaseServer(void *data)
      else
       msgType = (int)(rxBuf.msgType);
       
-     if(clientSocketsMask && msgType > POD_MAC_POLL)
+     if(msgType > POD_MAC_POLL)
       Mesh_sendDhcpLeaseUpdate( msgType, rxBuf.lease.mac, rxBuf.lease.ipaddr, rxBuf.lease.hostname, rxBuf.lease.fingerprint);
      else if( msgType == POD_XHS_PORT)
       MeshWarning("Pod is connected on XHS ethernet Port, Unplug and plug in to different one\n");
@@ -1976,16 +1976,19 @@ void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostna
     // Notify plume
     // Set sync message type
     mMsg.msgType = msgType;
-    strncpy(mMsg.data.meshLease.mac, mac, sizeof(mMsg.data.meshLease.mac)-1);
-    strncpy(mMsg.data.meshLease.ipaddr, ipaddr, sizeof(mMsg.data.meshLease.ipaddr)-1);
-    strncpy(mMsg.data.meshLease.hostname, hostname, sizeof(mMsg.data.meshLease.hostname)-1);
-    strncpy(mMsg.data.meshLease.fingerprint, fingerprint, sizeof(mMsg.data.meshLease.fingerprint)-1);
-    MeshInfo("DNSMASQ: %d %s %s %s %s\n",mMsg.msgType,mMsg.data.meshLease.mac, mMsg.data.meshLease.ipaddr, mMsg.data.meshLease.hostname, mMsg.data.meshLease.fingerprint);
-    msgQSend(&mMsg);
-    // Link change notification: prints telemetry on pod networks
-    if( msgType != MESH_DHCP_REMOVE_LEASE && Mesh_PodAddress(mac, FALSE) && strstr( ipaddr, POD_IP_PREFIX)) {
-      Mesh_logLinkChange();
-     }
+    if(clientSocketsMask && msgType <= MESH_DHCP_UPDATE_LEASE)
+    {
+        strncpy(mMsg.data.meshLease.mac, mac, sizeof(mMsg.data.meshLease.mac)-1);
+        strncpy(mMsg.data.meshLease.ipaddr, ipaddr, sizeof(mMsg.data.meshLease.ipaddr)-1);
+        strncpy(mMsg.data.meshLease.hostname, hostname, sizeof(mMsg.data.meshLease.hostname)-1);
+        strncpy(mMsg.data.meshLease.fingerprint, fingerprint, sizeof(mMsg.data.meshLease.fingerprint)-1);
+        MeshInfo("DNSMASQ: %d %s %s %s %s\n",mMsg.msgType,mMsg.data.meshLease.mac, mMsg.data.meshLease.ipaddr, mMsg.data.meshLease.hostname, mMsg.data.meshLease.fingerprint);
+        msgQSend(&mMsg);
+        // Link change notification: prints telemetry on pod networks
+        if( msgType != MESH_DHCP_REMOVE_LEASE && Mesh_PodAddress(mac, FALSE) && strstr( ipaddr, POD_IP_PREFIX)) {
+            Mesh_logLinkChange();
+        }
+    }
     return true;
 }
 
