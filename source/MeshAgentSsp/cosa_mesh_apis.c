@@ -92,6 +92,8 @@ const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 #define STATE_FALSE "false"
 
 static bool isPaceXF3 = false;
+#define ETHBHAUL_SWITCH "/usr/sbin/deviceinfo.sh"
+
 static bool s_SysEventHandler_ready = false;
 extern  ANSC_HANDLE             bus_handle;
 
@@ -170,7 +172,7 @@ MeshSync_MsgItem meshSyncMsgArr[] = {
     {MESH_DHCP_UPDATE_LEASE,                "MESH_DHCP_UPDATE_LEASE",               "lease_update"},
     {MESH_WIFI_RADIO_CHANNEL_BW,            "MESH_WIFI_RADIO_CHANNEL_BW",           "channel_update"},
     {MESH_ETHERNET_MAC_LIST,                "MESH_ETHERNET_MAC_LIST",               "process_eth_mac"},
-    {MESH_RFC_UPDATE,                       "MESH_RFC_UPDATE",                      "ethbhaul_enable"}};
+    {MESH_RFC_UPDATE,                       "MESH_RFC_UPDATE",                      "eb_enable"}};
 typedef struct
 {
     eMeshIfaceType  mType;
@@ -504,8 +506,18 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
     break;
     case MESH_ETHERNET_MAC_LIST:
     {
+      char cmd[256] = {0};
+      int rc = -1;
       if( g_pMeshAgent->PodEthernetBackhaulEnable)
+      {
+       sprintf(cmd,"%s %s", ETHBHAUL_SWITCH, "-eb_enable");
+       rc = system(cmd);
+       if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
+       {
+        MeshError("%s: Ethernet backhaul enable failed = %d\n", cmd, WEXITSTATUS(rc));
+       }
        Mesh_SendEthernetMac(rxMsg.data.ethMac.mac);
+      }
       else
        MeshInfo("Ethernet bhaul disabled, ignoring the Pod mac update\n");
       Mesh_PodAddress( rxMsg.data.ethMac.mac, TRUE);
@@ -1538,6 +1550,8 @@ void meshSetSyscfg(bool enable)
  */
 bool Mesh_SetMeshEthBhaul(bool enable, bool init)
 {
+    char cmd[256] = {0};
+    int rc = -1;
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr) != enable)
     {
@@ -1546,8 +1560,17 @@ bool Mesh_SetMeshEthBhaul(bool enable, bool init)
         //Send this as an RFC update to plume manager
         Mesh_sendRFCUpdate("PodEthernetBackhaul.Enable", enable ? "true" : "false", rfc_boolean);
     // If ethernet bhaul is disabled, send msg to dnsmasq informing same with a dummy mac    
-        if(!enable) 
+        if(!enable)
+        {
+          sprintf(cmd,"%s %s", ETHBHAUL_SWITCH, "-eb_disable &");
+          rc = system(cmd);
+          if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
+          {
+              MeshError("%s: Ethernet backhaul disable failed = %d\n", cmd, WEXITSTATUS(rc));
+          }
+
           Mesh_SendEthernetMac("00:00:00:00:00:00");
+        }
     }
     return TRUE;
 }
@@ -1879,8 +1902,8 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     out_val[0]='\0'; 
     if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr, out_val, outbufsz) != 0)
     {
-        MeshInfo("Syscfg error, Setting Ethbhaul mode to default\n");
-        Mesh_SetMeshEthBhaul(true,true);
+        MeshInfo("Syscfg error, Setting Ethbhaul mode to default FALSE\n");
+        Mesh_SetMeshEthBhaul(false,true);
     } else {
        if (strncmp(out_val, "true", 4) == 0) {
            MeshInfo("Setting initial ethbhaul mode to true\n");
@@ -1890,8 +1913,8 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
            Mesh_SetMeshEthBhaul(false,true);
        }
        else {
-        MeshInfo("Ethernet Bhaul status error from syscfg , setting default\n");
-        Mesh_SetMeshEthBhaul(true,true);
+        MeshInfo("Ethernet Bhaul status error from syscfg , setting default FALSE\n");
+        Mesh_SetMeshEthBhaul(false,true);
       }
     }
 
