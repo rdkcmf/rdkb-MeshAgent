@@ -83,6 +83,15 @@ const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 #define LOCAL_HOST   "127.0.0.1"
 #define POD_LINK_SCRIPT "/usr/ccsp/wifi/mesh_status.sh"
 #define POD_IP_PREFIX   "192.168.245."
+#define XF3_PLATFORM "XF3"
+#define RADIO_ENABLE_24  "Device.WiFi.Radio.1.Enable"
+#define RADIO_ENABLE_50  "Device.WiFi.Radio.2.Enable"
+#define RADIO_STATUS_24  "Device.WiFi.Radio.1.Status"
+#define RADIO_STATUS_50  "Device.WiFi.Radio.2.Status"
+#define STATE_DOWN "Down"
+#define STATE_FALSE "false"
+
+static bool isPaceXF3 = false;
 static bool s_SysEventHandler_ready = false;
 extern  ANSC_HANDLE             bus_handle;
 
@@ -1311,17 +1320,47 @@ BOOL is_SSID_enabled()
     return ret_b;
 }
 
+void is_xf3_platform()
+{
+    FILE *cmd;
+    char platform[32] = {'\0'};
+    int ind = -1;
+
+    cmd = popen("grep \"BOX_TYPE\" /etc/device.properties | cut -d \"=\" -f2","r");
+    if(cmd == NULL) {
+        MeshInfo("Mesh BOX_TYPE fetch failed \n");
+        return;
+    }
+    fgets(platform, sizeof(platform), cmd);
+    pclose(cmd);
+    platform[strlen(platform) -1] = '\0';
+    ind = strcmp(XF3_PLATFORM,platform);
+    if ( ind ==0 )
+    {
+        isPaceXF3 = true;
+    }
+    MeshInfo("Is XF3 platform check is = %d\n",isPaceXF3);
+}
+
 BOOL radio_check()
 {
     int ret = ANSC_STATUS_FAILURE;
     parameterValStruct_t    **valStructs = NULL;
     char dstComponent[64]="eRT.com.cisco.spvtg.ccsp.wifi";
     char dstPath[64]="/com/cisco/spvtg/ccsp/wifi";
-    const char Radio1[]="Device.WiFi.Radio.1.Status";
-    const char Radio2[]="Device.WiFi.Radio.2.Status";
-    char *paramNames[]={Radio1,Radio2};
     int  valNum = 0;
     BOOL ret_b=FALSE;
+    int ind = -1;
+    int radioDown = 0;
+    char radio1[64] = {0};
+    char radio2[64] = {0};
+    char state[10] = {0};
+
+    sprintf(radio1, "%s", isPaceXF3 ? RADIO_ENABLE_24 : RADIO_STATUS_24);
+    sprintf(radio2, "%s", isPaceXF3 ? RADIO_ENABLE_50 : RADIO_STATUS_50);
+    sprintf(state, "%s", isPaceXF3 ?  STATE_FALSE : STATE_DOWN);
+
+    char *paramNames[]={radio1,radio2};
 
     ret = CcspBaseIf_getParameterValues(
             bus_handle,
@@ -1338,8 +1377,23 @@ BOOL radio_check()
          return FALSE;
     }
 
-
-    if(valStructs && ((strncmp("Down", valStructs[0]->parameterValue,4)==0) || (strncmp("Down", valStructs[1]->parameterValue,4)==0)))
+    if(valStructs)
+    {
+        ind = strcmp(state,valStructs[0]->parameterValue);
+        if (ind ==0)
+        {
+            radioDown = 1;
+        }
+        else
+        {
+            ind = strcmp(state,valStructs[1]->parameterValue);
+            if (ind ==0)
+	    {
+                radioDown = 1;
+            }
+        }
+    }
+    if(radioDown)
         MeshError("Radio Error: Status 2.4= %s 5= %s \n", valStructs[0]->parameterValue, valStructs[1]->parameterValue);
     else
          ret_b=(valStructs?true:false);
@@ -1712,7 +1766,8 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
 
     // Check to see if the mesh dev flag is set
     bool devFlag = (access(meshDevFile, F_OK) == 0);
-
+    //Fetch device name, this temporary fix should be removed when RDKB-31468 ticket is fixed
+    is_xf3_platform();
     // set URL
     out_val[0]='\0';
     if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_URL_CHANGE].sysStr, out_val, outbufsz) != 0)
