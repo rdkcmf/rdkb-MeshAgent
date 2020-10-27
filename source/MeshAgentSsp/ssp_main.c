@@ -307,7 +307,6 @@ void Cosa_print_uptime_meshagent( void  )
     if( 0 == CheckAndGetDevicePropertiesEntry( acBoxType, sizeof( acBoxType ),"BOX_TYPE" ) )
     {
         CcspTraceInfo(("%s - Box Type is %s \n",__FUNCTION__, acBoxType));
-
         // If it is XB3 then we need to do RPC client operation to do further
         // If it is non-XB3 then we need to do operation here itself
 
@@ -329,10 +328,10 @@ void Cosa_print_uptime_meshagent( void  )
                    }
                 }
 	    }
-	}
-        else
-        {
-            system("print_uptime \"boot_to_meshagent_uptime\"");
+            else
+            {
+                system("print_uptime \"boot_to_meshagent_uptime\"");
+            }
         }
     }
 }
