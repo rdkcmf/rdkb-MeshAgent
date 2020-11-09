@@ -175,7 +175,7 @@ MeshAgent_GetParamBoolValue
         *pBool = g_pMeshAgent->meshEnable;
         return TRUE;
     }
-    else 
+    else
     {
         rc = strcmp_s("PodEthernetBackhaulEnable",strlen("PodEthernetBackhaulEnable"),ParamName,&ind);
         ERR_CHK(rc);

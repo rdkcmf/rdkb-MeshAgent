@@ -93,6 +93,8 @@ typedef enum {
     MESH_WIFI_RADIO_CHANNEL_BW,
     MESH_ETHERNET_MAC_LIST,
     MESH_RFC_UPDATE,
+    MESH_TUNNEL_SET,
+    MESH_TUNNEL_SET_VLAN,
     MESH_SYNC_MSG_TOTAL
 } eMeshSyncType;
 
@@ -334,6 +336,20 @@ typedef struct _MeshRFCUpdate {
     eRfcType    type;
 } MeshRFCUpdate;
 
+typedef struct _MeshTunnelSet {
+    char        ifname[64];
+    char        localIp[MAX_IP_LEN];
+    char        remoteIp[MAX_IP_LEN];
+    char        dev[64];
+    char        bridge[64];
+} MeshTunnelSet;
+
+typedef struct _MeshTunnelSetVlan {
+    char        ifname[64];
+    char        parent_ifname[64];
+    char        bridge[64];
+    int         vlan;
+} MeshTunnelSetVlan;
 /**
  * Channel Bandwidth change notification
  */
@@ -370,6 +386,8 @@ typedef struct _MeshSync {
         MeshWifiRadioChannelBw          wifiRadioChannelBw; 
         MeshEthMac			ethMac;
         MeshRFCUpdate			rfcUpdate; 
+        MeshTunnelSet			tunnelSet; 
+        MeshTunnelSetVlan		tunnelSetVlan; 
     } data;
 } MeshSync;
 

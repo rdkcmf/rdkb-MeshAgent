@@ -39,7 +39,6 @@
 #include <pthread.h>
 #include <syscfg/syscfg.h>
 #include <sysevent/sysevent.h>
-
 #include <fcntl.h>
 
 #include "ansc_platform.h"
@@ -52,6 +51,10 @@
 #include "ssp_global.h"
 #include "cosa_webconfig_api.h"
 #include "safec_lib_common.h"
+
+#ifdef MESH_OVSAGENT_ENABLE
+#include "OvsAgentApi.h"
+#endif
 
 // TELEMETRY 2.0 //RDKB-26019
 #include <telemetry_busmessage_sender.h>
@@ -82,7 +85,7 @@ const int QUEUE_PERMISSIONS=0660;
 const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 #endif
 
-#define MESH_ENABLED "/nvram/mesh_enabled"   
+#define MESH_ENABLED "/nvram/mesh_enabled"
 #define LOCAL_HOST   "127.0.0.1"
 #define POD_LINK_SCRIPT "/usr/ccsp/wifi/mesh_status.sh"
 #define POD_IP_PREFIX   "192.168.245."
@@ -98,7 +101,9 @@ const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 static bool isPaceXF3 = false;
 bool isXB3Platform = false;
 #define ETHBHAUL_SWITCH "/usr/sbin/deviceinfo.sh"
-
+#define MESH_BHAUL_BRIDGE "br403"
+#define MESH_BHAUL_INETADDR "192.168.245.254"
+#define MESH_BHAUL_INETMASK "255.255.255.0"
 static bool s_SysEventHandler_ready = false;
 extern  ANSC_HANDLE             bus_handle;
 
@@ -110,7 +115,6 @@ token_t sysevent_token_gs;
 token_t sysevent_token;
 static pthread_t sysevent_tid;
 
-
 const char urlOld[] = "NOC-URL-DEV";
 const char urlDefault[] = "NOC-URL-PROD";
 const char meshServiceName[] = "meshwifi";
@@ -120,7 +124,7 @@ pthread_mutex_t mesh_handler_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define _DEBUG 1
 #define THREAD_NAME_LEN 16 //length is restricted to 16 characters, including the terminating null byte
 
-//Prash 
+//Prash
 static int dnsmasqFd;
 static struct sockaddr_in dnsserverAddr;
 
@@ -179,7 +183,9 @@ MeshSync_MsgItem meshSyncMsgArr[] = {
     {MESH_DHCP_UPDATE_LEASE,                "MESH_DHCP_UPDATE_LEASE",               "lease_update"},
     {MESH_WIFI_RADIO_CHANNEL_BW,            "MESH_WIFI_RADIO_CHANNEL_BW",           "channel_update"},
     {MESH_ETHERNET_MAC_LIST,                "MESH_ETHERNET_MAC_LIST",               "process_eth_mac"},
-    {MESH_RFC_UPDATE,                       "MESH_RFC_UPDATE",                      "eb_enable"}};
+    {MESH_RFC_UPDATE,                       "MESH_RFC_UPDATE",                      "eb_enable"},
+    {MESH_TUNNEL_SET,                       "MESH_TUNNEL_SET",                      "tunnel"},
+    {MESH_TUNNEL_SET_VLAN,                  "MESH_TUNNEL_SET_VLAN",                 "tunnel_vlan"}};
 typedef struct
 {
     eMeshIfaceType  mType;
@@ -205,6 +211,8 @@ static void *Mesh_sysevent_handler(void *data);
 int Mesh_Init(ANSC_HANDLE hThisObject);
 void Mesh_InitClientList();
 void changeChBandwidth( int, int);
+static void Mesh_ModifyPodTunnel(MeshTunnelSet *conf);
+static void Mesh_ModifyPodTunnelVlan(MeshTunnelSetVlan *conf);
 static char EthPodMacs[MAX_POD_COUNT][MAX_MAC_ADDR_LEN];
 static int eth_mac_count = 0;
 
@@ -383,12 +391,12 @@ static bool Mesh_PodAddress(char *mac, bool add)
       return FALSE;
    }
    eth_mac_count++;
-  } 
+  }
   else
   {
    MeshInfo("Send the Connect event for this client as normal client: %s\n", mac);
   }
-  
+
   return FALSE;
 }
 
@@ -407,7 +415,7 @@ void Mesh_SendEthernetMac(char *mac)
  {
   PodMacNotify msg = {0};
   PodMacNotify *sendBuff;
- 
+
   sendBuff = &msg;
   msg.msgType = g_pMeshAgent->PodEthernetBackhaulEnable ?  START_POD_FILTER : STOP_POD_FILTER;
   rc = strcpy_s(msg.mac, MAX_MAC_ADDR_LEN, mac);
@@ -420,17 +428,17 @@ void Mesh_SendEthernetMac(char *mac)
       return;
   } 
 
-  if(dnsmasqFd) { 
+  if(dnsmasqFd) {
     /* Coverity Issue Fix - CID:113076 : Buffer Over Run */
     /* Coverity Fix CID: 110417 CHECKED_RETURN */
    if(sendto(dnsmasqFd, (const char*)sendBuff, sizeof(PodMacNotify), 0, (struct sockaddr *)&dnsserverAddr,(sizeof dnsserverAddr)) ==-1)
      MeshError("Error sending Pod mac address to dnsmasq\n");
    else
      MeshInfo("Pod mac address sent to dnsmasq MAC: %s\n", mac);
-  } 
+  }
   else
      MeshError ("Error sending Pod mac address to dnsmasq, Socket not ready MAC: %s\n", mac);
-  
+
   close(dnsmasqFd);
   dnsmasqFd=0;
  }
@@ -598,9 +606,21 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
     break;
     case MESH_WIFI_RADIO_CHANNEL_BW:
     {
-        MeshInfo("Recieved Channel BW change notification radioId = %d channel = %d\n", 
-                  rxMsg.data.wifiRadioChannelBw.index, rxMsg.data.wifiRadioChannelBw.bw); 
+        MeshInfo("Recieved Channel BW change notification radioId = %d channel = %d\n",
+                  rxMsg.data.wifiRadioChannelBw.index, rxMsg.data.wifiRadioChannelBw.bw);
         changeChBandwidth(rxMsg.data.wifiRadioChannelBw.index, rxMsg.data.wifiRadioChannelBw.bw);
+    }
+    break;
+    case MESH_TUNNEL_SET:
+    {
+      MeshInfo("Received Tunnel creation\n");
+      Mesh_ModifyPodTunnel(&rxMsg.data);
+    }
+    break;
+    case MESH_TUNNEL_SET_VLAN:
+    {
+      MeshInfo("Received Tunnel vlan creation\n");
+      Mesh_ModifyPodTunnelVlan(&rxMsg.data);
     }
     break;
     case MESH_ETHERNET_MAC_LIST:
@@ -620,7 +640,7 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
       else
        MeshInfo("Ethernet bhaul disabled, ignoring the Pod mac update\n");
       Mesh_PodAddress( rxMsg.data.ethMac.mac, TRUE);
-    } 
+    }
     break;
     // the rest of these messages will not come from the Mesh vendor
     case MESH_SUBNET_CHANGE:
@@ -687,7 +707,7 @@ static void Mesh_EthPodTunnel(PodTunnel *tunnel)
 }
 /**
  *  @brief Mesh Agent dnsmasq lease server thread
- *  This function will create a server socket for the dnsmasq lease notifications. 
+ *  This function will create a server socket for the dnsmasq lease notifications.
  *  dnsmasq sends the lease update related notifications to mesh-agent
  *
  *  @return 0
@@ -712,11 +732,11 @@ static int leaseServer(void *data)
     }
    fgets(atomIP, sizeof(atomIP), cmd);
    pclose(cmd);
-   
+
    Socket = socket(PF_INET, SOCK_DGRAM, 0);
    /* Coverity Issue Fix - CID:69541 : Negative Returns */
    if( Socket < 0 )
-   {	 
+   {
 	MeshError("%s-%d : Error in opening Socket\n" , __FUNCTION__, __LINE__);
 	return ANSC_STATUS_FAILURE;
    }
@@ -741,10 +761,10 @@ static int leaseServer(void *data)
    {
        MeshError("%s-%d : Error in Binding Socket\n" , __FUNCTION__, __LINE__);
        return -1;
-   } 
+   }
 
    addr_size = sizeof serverStorage;
-   
+
    while(1) {
      nBytes = recvfrom(Socket,(char *)&rxBuf,sizeof(MeshNotify),0,(struct sockaddr *)&serverStorage, &addr_size);
      if(gdoNtohl)
@@ -775,7 +795,6 @@ static int leaseServer(void *data)
      else
       MeshError("%s : Unknown Msg = %d\n", __FUNCTION__, msgType);
     }
-     
    return 0;
 }
 #if defined(ENABLE_MESH_SOCKETS)
@@ -1262,12 +1281,12 @@ bool Mesh_SetMeshState(eMeshStateType state, bool init, bool commit)
         PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
         // Update the data model
         g_pMeshAgent->meshState = state;
-        
+
         if(commit)
         {
          /* Coverity Fix CID:55887 CHECKED_RETURN */
          if( Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_STATE_CHANGE].sysStr, meshStateArr[state].mStr, true) != ANSC_STATUS_SUCCESS )
-            MeshError(" %s-%d Failed in  Mesh_SysCfgSetStr()\n",__FUNCTION__,__LINE__);       
+            MeshError(" %s-%d Failed in  Mesh_SysCfgSetStr()\n",__FUNCTION__,__LINE__);
         }
         // Notify plume
         // Set sync message type
@@ -1324,9 +1343,9 @@ void changeChBandwidth(int radioId, int channelBw) {
   char* faultParam      = NULL;
   int   ret             = 0;
 
-  sprintf(parameterName, "Device.WiFi.Radio.%d.OperatingChannelBandwidth", radioId+1); 
-  sprintf(parameterValue, "%dMHz", channelBw); 
-  
+  sprintf(parameterName, "Device.WiFi.Radio.%d.OperatingChannelBandwidth", radioId+1);
+  sprintf(parameterValue, "%dMHz", channelBw);
+
   param_val[0].parameterName=parameterName;
   param_val[0].parameterValue=parameterValue;
   param_val[0].type = ccsp_string;
@@ -1348,9 +1367,7 @@ void changeChBandwidth(int radioId, int channelBw) {
     if( ( ret != CCSP_SUCCESS ) && ( faultParam!=NULL )) {
         MeshError(" %s-%d Failed to set %s\n",__FUNCTION__,__LINE__, parameterName);
         bus_info->freefunc( faultParam );
-        return FALSE;
     }
-    return TRUE;
 }
 
 BOOL set_wifi_boolean_enable(char *parameterName, char *parameterValue) {
@@ -1642,9 +1659,9 @@ BOOL radio_check()
     free_parameterValStruct_t(bus_handle, valNum, valStructs);
     if(!ret_b) {
       MeshError(("MESH_ERROR:Fail to enable Mesh because either one of the radios are off\n"));
-      t2_event_d("WIFI_ERROR_MESH_FAILED", 1);      
+      t2_event_d("WIFI_ERROR_MESH_FAILED", 1);
     }
-    
+
     return ret_b;
 }
 
@@ -1795,14 +1812,14 @@ void meshSetSyscfg(bool enable, bool commitSyscfg)
          }
          else{
           MeshInfo("syscfg set retrial failed in %d attempt\n", i+1);
-          t2_event_d("SYS_ERROR_SyscfgSet_retry_failed",  1); 
+          t2_event_d("SYS_ERROR_SyscfgSet_retry_failed",  1);
          }
       }
    }
    else
     MeshInfo("mesh enable set in the syscfg successfully\n");
 
-  if(enable) { 
+  if(enable) {
     MeshInfo("Set the flag in persistent memory for syscfg error recovery\n");
     fpMeshFile = fopen(MESH_ENABLED ,"a");
     if (fpMeshFile)
@@ -1811,7 +1828,7 @@ void meshSetSyscfg(bool enable, bool commitSyscfg)
         MeshInfo("fpMeshFile is NULL\n");
   } else
   {
-   if(!remove(MESH_ENABLED)) 
+   if(!remove(MESH_ENABLED))
     MeshInfo("Mesh Flag removed from persistent memory\n");
    else
     MeshError("Failed to remove Mesh Flag from persistent memory\n");
@@ -1878,9 +1895,9 @@ bool Mesh_SetGreAcc(bool enable, bool init, bool commitSyscfg)
     if (init || Mesh_GetEnabled("mesh_gre_acc_enable") != enable)
     {
         MeshInfo("%s: GRE Acc Commit:%d,Enable:%d",
-        __FUNCTION__,commitSyscfg,enable);
+            __FUNCTION__,commitSyscfg,enable);
         if (enable && (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) ||
-            Mesh_GetEnabled("mesh_ovs_enable")) )
+            Mesh_GetEnabled("mesh_ovs_enable")))
         {   // mesh_ovs_enable has higher priority over mesh_gre_acc_enable,
             // therefore when ovs is enabled, disable gre acc.
             MeshWarning("Disabling GreAcc RFC, since OVS is currently enabled!\n");
@@ -1918,20 +1935,20 @@ bool Mesh_SetOVS(bool enable, bool init, bool commitSyscfg)
     {
         MeshInfo("%s: OVS Enable Commit:%d,Enable:%d",
             __FUNCTION__,commitSyscfg,enable);
-        if (enable)
+        if (enable && isXB3Platform)
         {
             if (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
             {
                 MeshWarning("Disabling OVS RFC, since mesh is currently disabled!\n");
                 enable = false;
             }
-            else if (isXB3Platform &&  Mesh_GetEnabled("mesh_gre_acc_enable"))
+            else if (Mesh_GetEnabled("mesh_gre_acc_enable"))
             {   // mesh_ovs_enable has higher priority over mesh_gre_acc_enable,
                 // therefore disable Gre Acc.
                 Mesh_SetGreAcc(false, false, true);
             }
         }
-        if ( commitSyscfg && !meshSetOVSSyscfg(enable))
+        if (commitSyscfg && !meshSetOVSSyscfg(enable))
         {
             MeshError("Unable to %s OVS RFC\n", (enable?"enable":"disable"));
             return false;
@@ -1955,6 +1972,94 @@ bool Mesh_SetOVS(bool enable, bool init, bool commitSyscfg)
 int getMeshErrorCode()
 {
     return meshError;
+}
+
+#ifdef MESH_OVSAGENT_ENABLE
+static void Mesh_addOVSPort(char *ifname, char *bridge)
+{
+ //TODO: Stub to do recovery if OVS API fails
+}
+#endif
+
+static void Mesh_ModifyPodTunnel(MeshTunnelSet *conf)
+{
+#ifdef MESH_OVSAGENT_ENABLE
+    ovs_interact_request ovs_request = {0};
+    Gateway_Config *pGwConfig = NULL;
+
+    ovs_request.method = OVS_TRANSACT_METHOD;
+    ovs_request.operation = OVS_INSERT_OPERATION;
+    ovs_request.block_mode = OVS_ENABLE_BLOCK_MODE;
+
+    ovs_request.table_config.table.id = OVS_GW_CONFIG_TABLE;
+
+    if (!ovs_agent_api_init(OVS_MESH_AGENT_COMPONENT_ID)) {
+     MeshError("%s: Failed to init the API framework\n", __FUNCTION__);
+     return;
+    }
+
+    if (!ovs_agent_api_get_config(OVS_GW_CONFIG_TABLE, (void **)&pGwConfig))
+     {
+        MeshError("%s failed to allocate and initialize config\n", __FUNCTION__);
+        return ;
+     }
+
+    strncpy(pGwConfig->if_name, conf->ifname, sizeof(pGwConfig->if_name)-1);
+    strncpy(pGwConfig->parent_bridge, conf->bridge, sizeof(pGwConfig->parent_bridge)-1);
+
+    ovs_request.table_config.config = (void *) pGwConfig;
+
+    if(ovs_agent_api_interact(&ovs_request,NULL))
+     {
+        MeshInfo("%s Mesh OVS interact succeeded ifname:%s bridge:%s\n",__FUNCTION__, conf->ifname, conf->bridge);
+     } else {
+        MeshError("%s Mesh OVS interact failed ifname:%s bridge:%s\n",__FUNCTION__, conf->ifname, conf->bridge);
+     }
+
+    ovs_agent_api_deinit();
+
+#else
+    MeshInfo("%s: OVSAgent is not integrated in this platform yet\n", __FUNCTION__);
+#endif
+}
+
+static void Mesh_ModifyPodTunnelVlan(MeshTunnelSetVlan *conf)
+{
+#ifdef MESH_OVSAGENT_ENABLE
+    ovs_interact_request ovs_request = {0};
+    Gateway_Config *pGwConfig = NULL;
+    ovs_request.method = OVS_TRANSACT_METHOD;
+    ovs_request.operation = OVS_INSERT_OPERATION;
+    ovs_request.block_mode = OVS_ENABLE_BLOCK_MODE;
+    ovs_request.table_config.table.id = OVS_GW_CONFIG_TABLE;
+
+    if (!ovs_agent_api_init(OVS_MESH_AGENT_COMPONENT_ID)) {
+     MeshError("%s: Failed to init the API framework\n", __FUNCTION__);
+     return;
+    }
+
+    if (!ovs_agent_api_get_config(OVS_GW_CONFIG_TABLE, (void **)&pGwConfig))
+    {
+      MeshError("%s failed to allocate and initialize config\n", __FUNCTION__);
+      return ;
+    }
+
+    strncpy(pGwConfig->if_name, conf->ifname, sizeof(pGwConfig->if_name)-1);
+    strncpy(pGwConfig->parent_bridge, conf->bridge, sizeof(pGwConfig->parent_bridge)-1);
+
+    ovs_request.table_config.config = (void *) pGwConfig;
+
+    if(ovs_agent_api_interact(&ovs_request,NULL))
+     {
+      MeshInfo("%s Mesh OVS interact succeeded ifname:%s bridge:%s\n",__FUNCTION__, conf->ifname, conf->bridge);
+     } else {
+      MeshError("%s Mesh OVS interact failed ifname:%s bridge:%s\n",__FUNCTION__, conf->ifname, conf->bridge);
+     }
+
+    ovs_agent_api_deinit();
+#else
+    MeshInfo("%s: OVSAgent is not integrated in this platform yet\n", __FUNCTION__);
+#endif
 }
 
 void handleMeshEnable(void *Args)
@@ -2083,13 +2188,11 @@ bool Mesh_SetEnabled(bool enable, bool init, bool commitSyscfg)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) != enable)
     {
-        if (!enable)
+        if (!enable && isXB3Platform)
         {   // if mesh is being disabled, then also disable ovs
             MeshWarning("Disabling OVS and GRE_ACC RFC, since mesh will be disabled!\n");
             Mesh_SetOVS(false, false, true);
-            if(isXB3Platform) {
-                Mesh_SetGreAcc(false,false,true);
-            }
+            Mesh_SetGreAcc(false,false,true);
         }
         meshSetSyscfg(enable, commitSyscfg);
  	pthread_t tid;
@@ -2339,7 +2442,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         }
         else {
             rc = strcmp_s("false",strlen("false"),out_val,&ind);
-            ERR_CHK(rc); 
+            ERR_CHK(rc);
             if((ind == 0) && (rc == EOK)){
                 MeshInfo("Setting initial mesh wifi default to disabled\n");
                Mesh_SetEnabled(false, true, false);
@@ -2348,10 +2451,10 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
             MeshInfo("Unexpected value from syscfg , doing recovery\n");
             Mesh_Recovery();
            }
-       }  
+       }
     }
-   
-    out_val[0]='\0'; 
+
+    out_val[0]='\0';
     if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr, out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Syscfg error, Setting Ethbhaul mode to default FALSE\n");
@@ -2404,49 +2507,50 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
            ERR_CHK(rc);
            if((ind == 0) && (rc == EOK))
            {
-               MeshInfo("Setting initial OVS mode to false\n");
-               Mesh_SetOVS(false,true,false);
+              MeshInfo("Setting initial OVS mode to false\n");
+              Mesh_SetOVS(false,true,false);
            }
            else
            {
               MeshInfo("OVS status error from syscfg , setting default\n");
               Mesh_SetOVS(false,true,true);
            }
-         }
-     }
-    if(isXB3Platform) {
-    out_val[0]='\0';
-    if(Mesh_SysCfgGetStr("mesh_gre_acc_enable", out_val, sizeof(out_val)) != 0)
-    {
-             MeshInfo("Syscfg error, Setting gre acc mode to default\n");
-             Mesh_SetGreAcc(false,true,true);
+        }
     }
-    else
+
+    if(isXB3Platform)
     {
-        rc = strcmp_s("true",strlen("true"),out_val,&ind);
-        ERR_CHK(rc);
-        if((ind == 0) && (rc == EOK) &&
-            Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
+        out_val[0]='\0';
+        if(Mesh_SysCfgGetStr("mesh_gre_acc_enable", out_val, sizeof(out_val)) != 0)
         {
-               MeshInfo("Setting initial gre acc mode to true\n");
-               Mesh_SetGreAcc(true,true,false);
+           MeshInfo("Syscfg error, Setting gre acc mode to default\n");
+           Mesh_SetGreAcc(false,true,true);
         }
         else
         {
-           rc = strcmp_s("false",strlen("false"),out_val,&ind);
+           rc = strcmp_s("true",strlen("true"),out_val,&ind);
            ERR_CHK(rc);
            if((ind == 0) && (rc == EOK))
            {
-               MeshInfo("Setting initial gre acc mode to false\n");
-               Mesh_SetGreAcc(false,true,false);
+              MeshInfo("Setting initial gre acc mode to true\n");
+              Mesh_SetGreAcc(true,true,false);
            }
            else
            {
-               MeshInfo("gre acc status error from syscfg , setting default\n");
-               Mesh_SetGreAcc(false,true,true);
+              rc = strcmp_s("false",strlen("false"),out_val,&ind);
+              ERR_CHK(rc);
+              if((ind == 0) && (rc == EOK))
+              {
+                 MeshInfo("Setting initial gre acc mode to false\n");
+                 Mesh_SetGreAcc(false,true,false);
+              }
+              else
+              {
+                 MeshInfo("gre acc status error from syscfg , setting default\n");
+                 Mesh_SetGreAcc(false,true,true);
+              }
            }
-         }
-     }
+        }
     }
 
     // MeshInfo("Exiting from %s\n",__FUNCTION__);
@@ -2526,9 +2630,9 @@ bool Mesh_UpdateConnectedDevice(char *mac, char *iface, char *host, char *status
  * @brief Mesh Agent Send RFC parameter to plume managers
  *
  * This function will notify plume agent about RFC changes
- */ 
+ */
 void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type)
-{   
+{
     // send out notification to plume
     MeshSync mMsg = {0};
     errno_t rc = -1;
@@ -2553,21 +2657,21 @@ void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type)
     MeshInfo("RFC_UPDATE: param: %s val:%s type=%d\n",mMsg.data.rfcUpdate.paramname, mMsg.data.rfcUpdate.paramval, mMsg.data.rfcUpdate.type);
     msgQSend(&mMsg);
     return true;
-} 
+}
 
 /**
  * @brief Mesh Agent Sync DHCP lease
  *
  * This function will notify plume agent to process the dnsmasq.lease
- * file 
+ * file
  */
 void Mesh_sendDhcpLeaseSync(void)
 {
     // send out notification to plume
     MeshSync mMsg = {0};
-    //Setting the MSB of clientSocketsMask as state m/c to make sure we dont send any dnsmasq lease updates to 
+    //Setting the MSB of clientSocketsMask as state m/c to make sure we dont send any dnsmasq lease updates to
     //plume while dnsmasq.lease sync is happening
-    clientSocketsMask |= (1 << MAX_CONNECTED_CLIENTS); 
+    clientSocketsMask |= (1 << MAX_CONNECTED_CLIENTS);
     //copy the dnsmasq.leases file from ARM to Atom and send out SYNC message to use the file
     MeshInfo("Copying dnsmasq.leases file from ARM to Atom for the first time\n");
     system("/usr/ccsp/wifi/synclease.sh");
@@ -2579,7 +2683,7 @@ void Mesh_sendDhcpLeaseSync(void)
     mMsg.msgType = MESH_DHCP_RESYNC_LEASES;
     msgQSend(&mMsg);
     //Prash: umask the MSB so that , we can go ahead sending dnsmasq lease notifications
-    clientSocketsMask &= ~(1 << MAX_CONNECTED_CLIENTS); 
+    clientSocketsMask &= ~(1 << MAX_CONNECTED_CLIENTS);
 #endif
     return true;
 }
@@ -2588,7 +2692,7 @@ void Mesh_sendDhcpLeaseSync(void)
  * @brief Mesh Agent Sync DHCP lease
  *
  * This function will notify plume agent if any change in the
- * lease 
+ * lease
  */
 void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostname, char *fingerprint)
 {
