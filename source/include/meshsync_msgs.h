@@ -39,6 +39,13 @@
 #define MAX_MAC_ADDR_LEN     18
 #define MAX_HOSTNAME_LEN     256
 #define MAX_RFC_PARAM_NAME   256
+#define ETHBHAUL_BR_IP       "169.254.85.1"
+#define MESHBHAUL_BR         "br403"
+#define XHS_VLAN             101
+#define LNF_VLAN             106
+#define XHS_BR               "brlan1"
+#define LNF_BR               "br106"
+#define LNF_BR_XF3           "brlan6"
 
 #if defined(ENABLE_MESH_SOCKETS)
 /**************************************************************************/
@@ -309,6 +316,16 @@ typedef struct _MeshWifiDhcpLease {
 } MeshWifiDhcpLease;
 
 /**
+* Message from dnsmasq to create
+* tunnels for ethernet pods
+*/
+typedef struct _PodTunnel {
+    char        podmac[MAX_MAC_ADDR_LEN];
+    char        podaddr[MAX_IP_LEN];
+    char        dev[16];
+} PodTunnel;
+
+/**
  * RFC update message structure - to be sent to plume
  */
 typedef struct _MeshRFCUpdate {
@@ -356,10 +373,13 @@ typedef struct _MeshSync {
     } data;
 } MeshSync;
 
-typedef struct _LeaseNotify {
+typedef struct _MeshNotify {
+   union {
     MeshWifiDhcpLease        lease;
-    eMeshSyncType msgType;
-} LeaseNotify;
+    PodTunnel		     tunnel; 
+   };
+   int msgType;
+} MeshNotify;
 
 //Ethernet bhaul notify msg to dnsmasq
 typedef enum {

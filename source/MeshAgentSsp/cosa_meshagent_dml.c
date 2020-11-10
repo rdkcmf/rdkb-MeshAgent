@@ -548,6 +548,7 @@ MeshAgent_SetParamBoolValue
               if( g_pMeshAgent->PodEthernetBackhaulEnable)
               {
                 MeshInfo("Send Eth Bhaul disable notification to plume\n");
+                Mesh_EBCleanup();
                 Mesh_SendEthernetMac("00:00:00:00:00:00");
                 //Mesh_SetMeshEthBhaul(false,true); 
               } 

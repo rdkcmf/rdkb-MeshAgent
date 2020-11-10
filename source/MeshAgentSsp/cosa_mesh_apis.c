@@ -115,6 +115,7 @@ const char urlOld[] = "NOC-URL-DEV";
 const char urlDefault[] = "NOC-URL-PROD";
 const char meshServiceName[] = "meshwifi";
 const char meshDevFile[] = "/nvram/mesh-dev.flag";
+static bool gmssClamped = false;
 pthread_mutex_t mesh_handler_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define _DEBUG 1
 #define THREAD_NAME_LEN 16 //length is restricted to 16 characters, including the terminating null byte
@@ -439,7 +440,17 @@ void Mesh_SendEthernetMac(char *mac)
 
   return;
 }
-
+static int Mesh_getEthPodIndex(char *cmac)
+{
+ int i=0;
+ int ret = -1;
+ for(i =0; i <= eth_mac_count; i++)
+ {
+  if(!strcmp(cmac, EthPodMacs[i]))
+   return i;
+ }
+ return ret;
+}
 static void Mesh_SendPodAddresses()
 {
  int i=0;
@@ -636,7 +647,44 @@ static void Mesh_logLinkChange()
       }
    }
 }
+static void Mesh_EthPodTunnel(PodTunnel *tunnel)
+{
+    char cmd[512] = {0};
+    int rc = -1;
+    int PodIdx = Mesh_getEthPodIndex(tunnel->podmac);
 
+    memset( cmd, 0, sizeof(cmd));
+    snprintf( cmd, sizeof(cmd),
+            "ip link del ethpod%d; "
+            "ip link add ethpod%d type gretap local %s remote %s dev %s tos 1; "
+            "ifconfig ethpod%d up; "
+            "brctl addif %s ethpod%d; "
+            "vconfig add ethpod%d %d;vconfig add ethpod%d %d; "
+            "ifconfig ethpod%d.%d up;ifconfig ethpod%d.%d up; "
+            "brctl addif %s ethpod%d.%d;brctl addif %s ethpod%d.%d", 
+            PodIdx,
+            PodIdx, ETHBHAUL_BR_IP, tunnel->podaddr, tunnel->dev,
+            PodIdx,
+            MESHBHAUL_BR, PodIdx,
+            PodIdx, XHS_VLAN, PodIdx, LNF_VLAN,
+            PodIdx, XHS_VLAN, PodIdx, LNF_VLAN,
+            XHS_BR, PodIdx, XHS_VLAN, (isPaceXF3 ? LNF_BR_XF3 : LNF_BR), PodIdx, LNF_VLAN
+    );
+    MeshInfo("%s Etheret bhaul Network cmd: $s\n", cmd);
+
+    rc = system(cmd);
+    if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
+    {
+        MeshError("%s: tunnel create script fail rc = %d\n", cmd, WEXITSTATUS(rc));
+    }
+
+    if(!gmssClamped) {
+        MeshInfo("TCP MSS for XHS is enabled \n");
+        sysevent_set(sysevent_fd, sysevent_token, "eb_gre", "up", 0);
+        sysevent_set(sysevent_fd, sysevent_token, "firewall-restart", NULL, 0);
+        gmssClamped = true;
+    }
+}
 /**
  *  @brief Mesh Agent dnsmasq lease server thread
  *  This function will create a server socket for the dnsmasq lease notifications. 
@@ -648,7 +696,7 @@ static int leaseServer(void *data)
 {
    errno_t rc=-1;
    int Socket, nBytes;
-   LeaseNotify rxBuf;
+   MeshNotify rxBuf = {0};
    struct sockaddr_in serverAddr;
    struct sockaddr_storage serverStorage;
    socklen_t addr_size;
@@ -698,14 +746,12 @@ static int leaseServer(void *data)
    addr_size = sizeof serverStorage;
    
    while(1) {
-    
-     nBytes = recvfrom(Socket,(char *)&rxBuf,sizeof(LeaseNotify),0,(struct sockaddr *)&serverStorage, &addr_size);
+     nBytes = recvfrom(Socket,(char *)&rxBuf,sizeof(MeshNotify),0,(struct sockaddr *)&serverStorage, &addr_size);
      if(gdoNtohl)
       msgType = (int)ntohl(rxBuf.msgType);
      else
       msgType = (int)(rxBuf.msgType);
-      
-     if(msgType > POD_MAC_POLL)
+     if(msgType > POD_MAX_MSG)
       Mesh_sendDhcpLeaseUpdate( msgType, rxBuf.lease.mac, rxBuf.lease.ipaddr, rxBuf.lease.hostname, rxBuf.lease.fingerprint);
      else if( msgType == POD_XHS_PORT)
       MeshWarning("Pod is connected on XHS ethernet Port, Unplug and plug in to different one\n");
@@ -719,10 +765,15 @@ static int leaseServer(void *data)
      else if( msgType == POD_MAC_POLL)
      {
       MeshInfo("Dnsmasq sent poll to retrieve pod mac addresses\n");
-      Mesh_SendPodAddresses(); 
+      Mesh_SendPodAddresses();
+     }
+     else if( msgType == POD_CREATE_TUNNEL)
+     {
+      MeshInfo("Ethernet pod detected, creating GRE tunnels for the same %s %s %s\n" , rxBuf.tunnel.podmac, rxBuf.tunnel.podaddr, rxBuf.tunnel.dev);
+      Mesh_EthPodTunnel(&rxBuf.tunnel);
      }
      else
-      MeshError("%s : Unknown Msg = %d\n", __FUNCTION__, msgType); 
+      MeshError("%s : Unknown Msg = %d\n", __FUNCTION__, msgType);
     }
      
    return 0;
@@ -1767,6 +1818,26 @@ void meshSetSyscfg(bool enable, bool commitSyscfg)
   }
 }
 
+void Mesh_EBCleanup()
+{
+    char cmd[256] = {0};
+    int rc = -1;
+
+    sprintf(cmd,"%s %s", ETHBHAUL_SWITCH, "-eb_disable &");
+    rc = system(cmd);
+    if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
+    {
+        MeshError("%s: Ethernet backhaul disable failed = %d\n", cmd, WEXITSTATUS(rc));
+    }
+     
+    if(gmssClamped) {
+        MeshInfo("TCP MSS clamp for XHS is disabled\n");
+        sysevent_set(sysevent_fd, sysevent_token, "eb_gre", "down", 0);
+        sysevent_set(sysevent_fd, sysevent_token, "firewall-restart", NULL, 0);
+        gmssClamped = false;
+    } 
+}
+
 /**
  * @brief Mesh Agent EthBhaul Set Enable/Disable
  *
@@ -1774,8 +1845,6 @@ void meshSetSyscfg(bool enable, bool commitSyscfg)
  */
 bool Mesh_SetMeshEthBhaul(bool enable, bool init, bool commitSyscfg)
 {
-    char cmd[256] = {0};
-    int rc = -1;
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr) != enable)
     {
@@ -1787,17 +1856,11 @@ bool Mesh_SetMeshEthBhaul(bool enable, bool init, bool commitSyscfg)
         }
         g_pMeshAgent->PodEthernetBackhaulEnable = enable;
         //Send this as an RFC update to plume manager
-        Mesh_sendRFCUpdate("PodEthernetBackhaul.Enable", enable ? "true" : "false", rfc_boolean);
+        Mesh_sendRFCUpdate("PodEthernetGreBackhaul.Enable", enable ? "true" : "false", rfc_boolean);
     // If ethernet bhaul is disabled, send msg to dnsmasq informing same with a dummy mac    
         if(!enable)
         {
-          sprintf(cmd,"%s %s", ETHBHAUL_SWITCH, "-eb_disable &");
-          rc = system(cmd);
-          if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
-          {
-              MeshError("%s: Ethernet backhaul disable failed = %d\n", cmd, WEXITSTATUS(rc));
-          }
-
+          Mesh_EBCleanup();
           Mesh_SendEthernetMac("00:00:00:00:00:00");
         }
     }
