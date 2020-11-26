@@ -28,6 +28,8 @@
 #include "safec_lib_common.h"
 #include <msgpack.h>
 #include "helpers.h"
+#include "cosa_apis_util.h"
+#include "base64.h"
 
 #define DEBUG_INI_NAME  "/etc/debug.ini"
 extern bool isXB3Platform;
@@ -37,6 +39,7 @@ extern COSA_DATAMODEL_MESHAGENT* g_pMeshAgent;
 /**
  * @brief LOGInit Initialize RDK Logger
  */
+void Mesh_EBCleanup();
 
 void LOGInit()
 {
@@ -164,10 +167,10 @@ MeshAgent_GetParamBoolValue
         BOOL*                       pBool
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     errno_t        rc = -1;
     int            ind = -1;
     /* check the parameter name and return the corresponding value */
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     rc = strcmp_s("Enable",strlen("Enable"),ParamName,&ind);
     ERR_CHK(rc);
     if( (ind == 0) && (rc == EOK))
@@ -186,7 +189,7 @@ MeshAgent_GetParamBoolValue
             return TRUE; 
         }
         else
-            MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+            MeshWarning("Unsupported parameter '%s'\n", ParamName);
     }
     return FALSE;
 }
@@ -231,15 +234,15 @@ GreAcc_GetParamBoolValue
         BOOL*                       pBool
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     /* check the parameter name and return the corresponding value */
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     if( AnscEqualString(ParamName, "Enable", TRUE))
     {
         *pBool = g_pMeshAgent->GreAccEnable;
         return TRUE;
     }
     else
-     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+     MeshWarning("Unsupported parameter '%s'\n", ParamName);
     return FALSE;
 }
 
@@ -281,10 +284,10 @@ OVS_GetParamBoolValue
         BOOL*                       pBool
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     errno_t rc = -1;
     int ind = -1;
     /* check the parameter name and return the corresponding value */
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     rc = strcmp_s("Enable",strlen("Enable"),ParamName,&ind);
     ERR_CHK(rc);
     if( (ind == 0) && (rc == EOK))
@@ -293,7 +296,7 @@ OVS_GetParamBoolValue
         return TRUE;
     }
     else
-     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+     MeshWarning("Unsupported parameter '%s'\n", ParamName);
     return FALSE;
 }
 
@@ -344,10 +347,10 @@ MeshAgent_GetParamStringValue
         ULONG*                      pUlSize
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     errno_t rc = -1;
     int ind = -1;
     /* check the parameter name and return the corresponding value */
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
         rc = strcmp_s("URL",strlen("URL"),ParamName,&ind);
         ERR_CHK(rc);
         if( (ind == 0) && (rc == EOK))
@@ -418,6 +421,7 @@ MeshAgent_GetParamUlongValue
         ULONG*                      puLong
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     errno_t rc = -1;
     int ind = -1;
     rc = strcmp_s("Status",strlen("Status"),ParamName,&ind);
@@ -482,8 +486,8 @@ MeshAgent_SetParamBoolValue
         BOOL                        bValue
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     /* check the parameter name and return the corresponding value */
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     char rdk_dcs[2][128];
     char vendor_dcs[2][128];
     int i=0;
@@ -529,7 +533,7 @@ MeshAgent_SetParamBoolValue
               if(is_radio_enabled(rdk_dcs[0],rdk_dcs[1])) {
                  for(i=0; i<2; i++) {
                    if(rdk_dcs[i][0]!=0 && set_wifi_boolean_enable(rdk_dcs[i], "false")==FALSE) {
-                        MeshError(("MESH_ERROR:Fail to enable Mesh because fail to turn off %s\n", rdk_dcs[i]));
+                        MeshError("MESH_ERROR:Fail to enable Mesh because fail to turn off %s\n", rdk_dcs[i]);
                         return FALSE;
                    }
                  }
@@ -537,7 +541,7 @@ MeshAgent_SetParamBoolValue
               if(is_radio_enabled(vendor_dcs[0],vendor_dcs[1])) {
                  for(i=0; i<2; i++) {
                    if(vendor_dcs[i][0]!=0 && set_wifi_boolean_enable(vendor_dcs[i], "false")==FALSE) {
-                        MeshError(("MESH_ERROR:Fail to enable Mesh because fail to turn off %s\n", vendor_dcs[i]));
+                        MeshError("MESH_ERROR:Fail to enable Mesh because fail to turn off %s\n", vendor_dcs[i]);
                         return FALSE;
                    }
                  }
@@ -568,7 +572,7 @@ MeshAgent_SetParamBoolValue
             return TRUE; 
         }    
         else
-            MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+            MeshWarning("Unsupported parameter '%s'\n", ParamName);
     }
     return FALSE;
 }
@@ -612,9 +616,9 @@ GreAcc_SetParamBoolValue
         BOOL                        bValue
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     errno_t rc = -1;
     int ind = -1;
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
 
     if (isXB3Platform) {
         rc = strcmp_s("Enable",strlen("Enable"), ParamName,&ind);
@@ -625,10 +629,10 @@ GreAcc_SetParamBoolValue
             return Mesh_SetGreAcc(bValue,false, true);
         }
         else
-            MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+            MeshWarning("Unsupported parameter '%s'\n", ParamName);
         return FALSE;
     }
-    MeshWarning(("GRE Acc Unsupported '%s'\n", ParamName));
+    MeshWarning("GRE Acc Unsupported '%s'\n", ParamName);
     return FALSE;
 }
 
@@ -671,9 +675,9 @@ OVS_SetParamBoolValue
         BOOL                        bValue
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     errno_t rc = -1;
     int ind = -1;
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     
     rc = strcmp_s("Enable",strlen("Enable"), ParamName,&ind);
     ERR_CHK(rc);
@@ -683,7 +687,7 @@ OVS_SetParamBoolValue
      return Mesh_SetOVS(bValue,false,true);
     }
     else
-     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+     MeshWarning("Unsupported parameter '%s'\n", ParamName);
     return FALSE;
 }
 
@@ -725,22 +729,22 @@ MeshAgent_SetParamUlongValue
         ULONG                       puLong
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     errno_t rc = -1;
     int ind = -1;
     /* check the parameter name and return the corresponding value */
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     rc = strcmp_s("State", strlen("State"), ParamName,&ind);
     ERR_CHK(rc);
     if( (ind == 0) && (rc == EOK))    
     {
         // Make sure the value is valid
-        if (puLong >= MESH_STATE_FULL && puLong < MESH_STATE_TOTAL) {
+        if ((long)puLong >= MESH_STATE_FULL && puLong < MESH_STATE_TOTAL) {
             Mesh_SetMeshState(puLong, false, true);
             return TRUE;
         }
     }
 
-    MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    MeshWarning("Unsupported parameter '%s'\n", ParamName);
     return FALSE;
 }
 
@@ -784,8 +788,8 @@ MeshAgent_SetParamStringValue
         char*                       pString
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     /* check the parameter name and return the corresponding value */
-    PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
     errno_t rc = -1;
     int ind = -1;
 
@@ -870,7 +874,6 @@ MeshAgent_SetParamStringValue
         char * decodeMsg =NULL;
         int decodeMsgSize =0;
         int size =0;
-        int i=0;
 
         msgpack_zone mempool;
         msgpack_object deserialized;
@@ -1022,13 +1025,14 @@ MeshAgent_Validate
         ULONG*                      puLength
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     errno_t rc = -1;
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
 
     if(!strlen(pMyObject->meshUrl))
     {  
     	/* Coverity Issue Fix - CID:125155 : Printf Args */
-        MeshInfo("Url String is Empty \n", __FUNCTION__);
+        MeshInfo("%s: Url String is Empty \n", __FUNCTION__);
         rc = strcpy_s(pReturnParamName, *puLength, "Url is empty");
         if(rc != EOK)
 	{
@@ -1068,6 +1072,7 @@ MeshAgent_Commit
         ANSC_HANDLE                 hInsContext
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     return 0;
 }
 
@@ -1100,6 +1105,7 @@ MeshAgent_Rollback
         ANSC_HANDLE                 hInsContext
     )
 {
+    UNREFERENCED_PARAMETER(hInsContext);
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
 
     // reset url

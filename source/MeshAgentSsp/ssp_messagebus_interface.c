@@ -94,8 +94,8 @@ ANSC_STATUS ssp_Mbi_MessageBusEngage(char * component_id,char * config_file,char
 
    
     g_MessageBusHandle_Irep = bus_handle;
- 
-    rc = strcpy_s(g_SubSysPrefix_Irep,sizeof(g_SubSysPrefix_Irep),g_Subsystem);
+    char *p_Subsystem = g_Subsystem;
+    rc = strcpy_s(g_SubSysPrefix_Irep,sizeof(g_SubSysPrefix_Irep),p_Subsystem);
     if(rc != EOK)
     {
         ERR_CHK(rc);
@@ -165,6 +165,7 @@ ANSC_STATUS ssp_Mbi_MessageBusEngage(char * component_id,char * config_file,char
 
 int ssp_Mbi_Initialize(void * user_data)
 {
+    UNREFERENCED_PARAMETER(user_data);
     ANSC_STATUS             returnStatus    = ANSC_STATUS_SUCCESS;
 
     return ( returnStatus == ANSC_STATUS_SUCCESS ) ? 0 : 1;
@@ -173,6 +174,7 @@ int ssp_Mbi_Initialize(void * user_data)
 
 int ssp_Mbi_Finalize(void* user_data)
 {
+    UNREFERENCED_PARAMETER(user_data);
     ANSC_STATUS             returnStatus    = ANSC_STATUS_SUCCESS;
 
     returnStatus = ssp_cancel(gpMeshAgentCfg);
@@ -183,12 +185,14 @@ int ssp_Mbi_Finalize(void* user_data)
 
 int ssp_Mbi_Buscheck(void* user_data)
 {
+    UNREFERENCED_PARAMETER(user_data);
     return 0;
 }
 
 
 int ssp_Mbi_FreeResources(int priority,void  * user_data)
 {
+    UNREFERENCED_PARAMETER(user_data);
     ANSC_STATUS             returnStatus    = ANSC_STATUS_SUCCESS;
 
     if ( priority == CCSP_COMMON_COMPONENT_FREERESOURCES_PRIORITY_Low )

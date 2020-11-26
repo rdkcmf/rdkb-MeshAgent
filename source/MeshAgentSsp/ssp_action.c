@@ -51,6 +51,10 @@ extern  ULONG                   g_ulAllocatedSizePeak;
 /*                           External Functions                               */
 /*----------------------------------------------------------------------------*/
 
+#ifdef USE_NOTIFY_COMPONENT
+static void Setup_ConnectedClient_Notification();
+#endif
+
 /**
  * @brief 
  * This function creates component object in the CR(Component Registrar).
@@ -270,30 +274,35 @@ ANSC_STATUS ssp_cancel(PCCSP_COMPONENT_CFG pMeshCfg)
 
 char* ssp_CcdIfGetComponentName(ANSC_HANDLE  hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return  g_pComponent_COMMON->Name;
 }
 
 
 ULONG ssp_CcdIfGetComponentVersion(ANSC_HANDLE  hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return  g_pComponent_COMMON->Version;
 }
 
 
 char* ssp_CcdIfGetComponentAuthor(ANSC_HANDLE hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return  g_pComponent_COMMON->Author;
 }
 
 
 ULONG ssp_CcdIfGetComponentHealth(ANSC_HANDLE  hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return  g_pComponent_COMMON->Health;
 }
 
 
 ULONG ssp_CcdIfGetComponentState(ANSC_HANDLE hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return  g_pComponent_COMMON->State;
 }
 
@@ -301,12 +310,14 @@ ULONG ssp_CcdIfGetComponentState(ANSC_HANDLE hThisObject)
 
 BOOL ssp_CcdIfGetLoggingEnabled(ANSC_HANDLE hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return  g_pComponent_COMMON->LogEnable;
 }
 
 
 ANSC_STATUS ssp_CcdIfSetLoggingEnabled(ANSC_HANDLE  hThisObject,BOOL bEnabled)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     if( g_pComponent_COMMON->LogEnable == bEnabled) return ANSC_STATUS_SUCCESS;
      g_pComponent_COMMON->LogEnable = bEnabled;
     if(bEnabled) g_iTraceLevel = (INT)  g_pComponent_COMMON->LogLevel;
@@ -318,12 +329,14 @@ ANSC_STATUS ssp_CcdIfSetLoggingEnabled(ANSC_HANDLE  hThisObject,BOOL bEnabled)
 
 ULONG ssp_CcdIfGetLoggingLevel(ANSC_HANDLE hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return  g_pComponent_COMMON->LogLevel;
 }
 
 
 ANSC_STATUS ssp_CcdIfSetLoggingLevel(ANSC_HANDLE hThisObject,ULONG LogLevel)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     if( g_pComponent_COMMON->LogLevel == LogLevel) return ANSC_STATUS_SUCCESS;
      g_pComponent_COMMON->LogLevel = LogLevel;
     if( g_pComponent_COMMON->LogEnable) g_iTraceLevel = (INT)  g_pComponent_COMMON->LogLevel;
@@ -334,18 +347,21 @@ ANSC_STATUS ssp_CcdIfSetLoggingLevel(ANSC_HANDLE hThisObject,ULONG LogLevel)
 
 ULONG ssp_CcdIfGetMemMaxUsage(ANSC_HANDLE hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return g_ulAllocatedSizePeak;
 }
 
 
 ULONG ssp_CcdIfGetMemMinUsage(ANSC_HANDLE  hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     return  g_pComponent_COMMON->MemMinUsage;
 }
 
 
 ULONG ssp_CcdIfGetMemConsumed(ANSC_HANDLE  hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     LONG             size = 0;
 
     size = AnscGetComponentMemorySize(CCSP_COMPONENT_NAME);
@@ -358,6 +374,7 @@ ULONG ssp_CcdIfGetMemConsumed(ANSC_HANDLE  hThisObject)
 
 ANSC_STATUS ssp_CcdIfApplyChanges(ANSC_HANDLE hThisObject)
 {
+    UNREFERENCED_PARAMETER(hThisObject);
     ANSC_STATUS                         returnStatus    = ANSC_STATUS_SUCCESS;
     /* Assume the parameter settings are committed immediately. */
     /* AnscSetTraceLevel((INT) g_pComponent_COMMON->LogLevel); */
@@ -367,7 +384,7 @@ ANSC_STATUS ssp_CcdIfApplyChanges(ANSC_HANDLE hThisObject)
 
 #ifdef USE_NOTIFY_COMPONENT
 
-void Setup_ConnectedClient_Notification()
+static void Setup_ConnectedClient_Notification()
 {
 
     char  str[512] = {0};

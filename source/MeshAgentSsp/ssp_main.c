@@ -174,7 +174,7 @@ int msgBusInit(const char *pComponentName)
     system("touch /tmp/meshagent_initialized");
     MeshInfo("msgBusInit - /tmp/meshagent_initialized created\n");
     pthread_t tid;
-    pthread_create(&tid, NULL, &Cosa_print_uptime_meshagent, NULL);
+    pthread_create(&tid, NULL, Cosa_print_uptime_meshagent, NULL);
 
     if ( bRunAsDaemon )
     {
@@ -296,8 +296,10 @@ int CheckAndGetDevicePropertiesEntry( char *pOutput, int size, char *sDeviceProp
     return ret;
 }
 
-void Cosa_print_uptime_meshagent( void  )
+void* Cosa_print_uptime_meshagent( void* arg )
 {
+    UNREFERENCED_PARAMETER(arg);
     pthread_detach(pthread_self());
     print_uptime("boot_to_meshagent_uptime",NULL);
+    return NULL;
 }

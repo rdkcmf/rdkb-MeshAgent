@@ -60,5 +60,10 @@ CosaMeshAgentRemove
         ANSC_HANDLE                 hThisObject
     );
     
+ANSC_STATUS
+CosaDmlMeshAgentInit
+    (
+        ANSC_HANDLE                 hThisObject
+    );
 
 #endif 

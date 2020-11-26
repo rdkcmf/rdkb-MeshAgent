@@ -25,6 +25,7 @@
  * @brief Mesh Agent
  *
  */
+#define _GNU_SOURCE
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -203,7 +204,10 @@ MeshIface_item meshIfaceArr[] = {
 /**************************************************************************/
 /*      LOCAL FUNCTIONS:                                                  */
 /**************************************************************************/
-static int msgQServer(void *data);
+static void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostname, char *fingerprint);
+static void Mesh_sendDhcpLeaseSync(void);
+static void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type);
+static void* msgQServer(void *data);
 static int  msgQSend(MeshSync *data);
 static void Mesh_SetDefaults(ANSC_HANDLE hThisObject);
 static bool Mesh_Register_sysevent(ANSC_HANDLE hThisObject);
@@ -413,7 +417,7 @@ void Mesh_SendEthernetMac(char *mac)
   errno_t rc = -1;
  if(Mesh_DnsmasqSock())
  {
-  PodMacNotify msg = {0};
+  PodMacNotify msg = {{0},0};
   PodMacNotify *sendBuff;
 
   sendBuff = &msg;
@@ -614,13 +618,13 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
     case MESH_TUNNEL_SET:
     {
       MeshInfo("Received Tunnel creation\n");
-      Mesh_ModifyPodTunnel(&rxMsg.data);
+      Mesh_ModifyPodTunnel((MeshTunnelSet *)&rxMsg.data);
     }
     break;
     case MESH_TUNNEL_SET_VLAN:
     {
       MeshInfo("Received Tunnel vlan creation\n");
-      Mesh_ModifyPodTunnelVlan(&rxMsg.data);
+      Mesh_ModifyPodTunnelVlan((MeshTunnelSetVlan *)&rxMsg.data);
     }
     break;
     case MESH_ETHERNET_MAC_LIST:
@@ -712,11 +716,13 @@ static void Mesh_EthPodTunnel(PodTunnel *tunnel)
  *
  *  @return 0
  */
-static int leaseServer(void *data)
+static void* leaseServer(void *data)
 {
+   UNREFERENCED_PARAMETER(data);
    errno_t rc=-1;
-   int Socket, nBytes;
-   MeshNotify rxBuf = {0};
+   int Socket;
+   MeshNotify rxBuf;
+   memset(&rxBuf, 0, sizeof(MeshNotify));
    struct sockaddr_in serverAddr;
    struct sockaddr_storage serverStorage;
    socklen_t addr_size;
@@ -728,7 +734,7 @@ static int leaseServer(void *data)
    cmd = popen("grep \"ATOM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
     if(cmd == NULL) {
        MeshInfo("%s : unable to get the atom IP address",__FUNCTION__);
-       return 1;
+       return NULL;
     }
    fgets(atomIP, sizeof(atomIP), cmd);
    pclose(cmd);
@@ -738,7 +744,7 @@ static int leaseServer(void *data)
    if( Socket < 0 )
    {
 	MeshError("%s-%d : Error in opening Socket\n" , __FUNCTION__, __LINE__);
-	return ANSC_STATUS_FAILURE;
+	return NULL;
    }
    serverAddr.sin_family = AF_INET;
    if(!isValidIpAddress(atomIP)) {
@@ -760,13 +766,13 @@ static int leaseServer(void *data)
    if( bind(Socket, (struct sockaddr *) &serverAddr, sizeof(serverAddr)) != 0)
    {
        MeshError("%s-%d : Error in Binding Socket\n" , __FUNCTION__, __LINE__);
-       return -1;
+       return NULL;
    }
 
    addr_size = sizeof serverStorage;
 
    while(1) {
-     nBytes = recvfrom(Socket,(char *)&rxBuf,sizeof(MeshNotify),0,(struct sockaddr *)&serverStorage, &addr_size);
+     recvfrom(Socket,(char *)&rxBuf,sizeof(MeshNotify),0,(struct sockaddr *)&serverStorage, &addr_size);
      if(gdoNtohl)
       msgType = (int)ntohl(rxBuf.msgType);
      else
@@ -795,7 +801,8 @@ static int leaseServer(void *data)
      else
       MeshError("%s : Unknown Msg = %d\n", __FUNCTION__, msgType);
     }
-   return 0;
+     
+    return NULL;
 }
 #if defined(ENABLE_MESH_SOCKETS)
 
@@ -808,8 +815,9 @@ static int leaseServer(void *data)
  *
  *  @return 0
  */
-static int msgQServer(void *data)
+static void* msgQServer(void *data)
 {
+    UNREFERENCED_PARAMETER(data);
     int master_socket, addrlen, new_socket, activity, i, sd;
     int max_sd;
     struct sockaddr_un address;
@@ -824,7 +832,7 @@ static int msgQServer(void *data)
     if( (master_socket = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
     {
         MeshError("Mesh Queue socket creation failure\n");
-        return errno;
+        return NULL;
     }
 
     //type of socket created
@@ -839,7 +847,7 @@ static int msgQServer(void *data)
       {
           ERR_CHK(rc);
           MeshError("Error in copying meshSocketPath\n");
-          return rc;
+          return NULL;
       }
     } else {
       rc = strcpy_s(address.sun_path, sizeof(address.sun_path), meshSocketPath);
@@ -847,7 +855,7 @@ static int msgQServer(void *data)
       {
           ERR_CHK(rc);
           MeshError("Error in copying meshSocketPath to address.sun_path\n");
-          return rc;
+          return NULL;
       }
       unlink(meshSocketPath);
     }
@@ -858,14 +866,14 @@ static int msgQServer(void *data)
        /* Coverity  Fix CID:54336 RESOURCE_LEAK */
         close(master_socket);
         MeshError("Mesh Queue socket bind failure\n");
-        return errno;
+        return NULL;
     }
 
     //try to specify maximum MAX_CONNECTED_CLIENTS pending connections for the master socket
     if (listen(master_socket, MAX_CONNECTED_CLIENTS) < 0)
     {
         MeshError("Mesh Queue socket listen failure\n");
-        return errno;
+        return NULL;
     }
 
     //accept the incoming connection
@@ -912,7 +920,7 @@ static int msgQServer(void *data)
             if ((new_socket = accept(master_socket, (struct sockaddr *)&address, (socklen_t*)&addrlen))<0)
             {
                 MeshError("Mesh Queue accept failure\n");
-                return errno;
+                return NULL;
             }
 
             //inform user of socket number - used in send and receive commands
@@ -1020,7 +1028,7 @@ static int msgQSend(MeshSync *data)
  *
  *  @return 0
  */
-static int msgQServer(void *data)
+static void* msgQServer(void *data)
 {
     // MeshInfo("Entering into %s\n",__FUNCTION__);
 
@@ -1164,7 +1172,7 @@ int Mesh_GetUrl(char *retBuf, int bufSz)
            return false;
         }
     }
-    rc = strcpy_s(retBuf, bufSz, out_val);
+    rc = strcpy_s(retBuf, (unsigned int)bufSz, out_val);
     if(rc != EOK)
     {
         ERR_CHK(rc);
@@ -1194,7 +1202,6 @@ bool Mesh_SetUrl(char *url, bool init)
     ERR_CHK(rc);
     if (init || ((rc == EOK) && (ind != 0)))
     {
-        PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
         // Update the data model
         rc = strcpy_s(g_pMeshAgent->meshUrl, sizeof(g_pMeshAgent->meshUrl), url);
         if(rc != EOK)
@@ -1278,7 +1285,6 @@ bool Mesh_SetMeshState(eMeshStateType state, bool init, bool commit)
     if (init || Mesh_GetMeshState() != state)
     {
         MeshInfo("Meshwifi state is set to %s\n", meshStateArr[state].mStr);
-        PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
         // Update the data model
         g_pMeshAgent->meshState = state;
 
@@ -1358,7 +1364,7 @@ void changeChBandwidth(int radioId, int channelBw) {
             bus,
             0,
             0,
-            &param_val,
+            param_val,
             1,
             TRUE,
             &faultParam
@@ -1390,7 +1396,7 @@ BOOL set_wifi_boolean_enable(char *parameterName, char *parameterValue) {
             bus,
             0,
             0,
-            &param_val,
+            param_val,
             1,
             TRUE,
             &faultParam
@@ -1452,9 +1458,7 @@ BOOL is_reset_needed()
     parameterValStruct_t    **valStructs = NULL;
     char dstComponent[64]="eRT.com.cisco.spvtg.ccsp.wifi";
     char dstPath[64]="/com/cisco/spvtg/ccsp/wifi";
-    const char ap12[]="Device.WiFi.SSID.13.Enable";
-    const char ap13[]="Device.WiFi.SSID.14.Enable";
-    char *paramNames[]={ap12,ap13};
+    char *paramNames[]={"Device.WiFi.SSID.13.Enable", "Device.WiFi.SSID.14.Enable"};
     int  valNum = 0;
     BOOL ret_b=FALSE;
     errno_t rc[2] = {-1, -1};
@@ -1513,9 +1517,7 @@ BOOL is_SSID_enabled()
     parameterValStruct_t    **valStructs = NULL;
     char dstComponent[64]="eRT.com.cisco.spvtg.ccsp.wifi";
     char dstPath[64]="/com/cisco/spvtg/ccsp/wifi";
-    const char ap12[]="Device.WiFi.SSID.13.Status";
-    const char ap13[]="Device.WiFi.SSID.14.Status";
-    char *paramNames[]={ap12,ap13};
+    char *paramNames[]={"Device.WiFi.SSID.13.Status" , "Device.WiFi.SSID.14.Status"};
     int  valNum = 0;
     BOOL ret_b=FALSE;
     errno_t rc = -1;
@@ -1974,11 +1976,13 @@ int getMeshErrorCode()
     return meshError;
 }
 
+#if 0
 #ifdef MESH_OVSAGENT_ENABLE
 static void Mesh_addOVSPort(char *ifname, char *bridge)
 {
  //TODO: Stub to do recovery if OVS API fails
 }
+#endif
 #endif
 
 static void Mesh_ModifyPodTunnel(MeshTunnelSet *conf)
@@ -2019,6 +2023,7 @@ static void Mesh_ModifyPodTunnel(MeshTunnelSet *conf)
     ovs_agent_api_deinit();
 
 #else
+    UNREFERENCED_PARAMETER(conf);
     MeshInfo("%s: OVSAgent is not integrated in this platform yet\n", __FUNCTION__);
 #endif
 }
@@ -2058,11 +2063,12 @@ static void Mesh_ModifyPodTunnelVlan(MeshTunnelSetVlan *conf)
 
     ovs_agent_api_deinit();
 #else
+    UNREFERENCED_PARAMETER(conf);
     MeshInfo("%s: OVSAgent is not integrated in this platform yet\n", __FUNCTION__);
 #endif
 }
 
-void handleMeshEnable(void *Args)
+void* handleMeshEnable(void *Args)
 {
 	bool success = TRUE;
         bool enable = FALSE;
@@ -2070,8 +2076,7 @@ void handleMeshEnable(void *Args)
         static bool last_set = FALSE;
         int error = MB_OK;
         int err = 0;
-        int i = 0;
-        unsigned char bit_mask =  (unsigned char) Args;
+        unsigned char bit_mask = (UCHAR) ( (intptr_t)Args); 
 
         pthread_mutex_lock(&mesh_handler_mutex);
         enable = (bit_mask & 0x02) ? TRUE : FALSE;
@@ -2085,7 +2090,7 @@ void handleMeshEnable(void *Args)
             MeshInfo("Skipping mesh redundant set\n");
             meshError = MB_OK;
             pthread_mutex_unlock(&mesh_handler_mutex);
-            return;
+            return NULL;
         }
 
 	 if (enable) {
@@ -2096,7 +2101,7 @@ void handleMeshEnable(void *Args)
               error =  MB_ERROR_PRECONDITION_FAILED;
               meshSetSyscfg(0, true);
               pthread_mutex_unlock(&mesh_handler_mutex);
-              return FALSE;
+              return NULL;
             }
 	    if(is_band_steering_enabled()) {
                    if(set_wifi_boolean_enable("Device.WiFi.X_RDKCENTRAL-COM_BandSteering.Enable", "false")==FALSE) {
@@ -2104,7 +2109,7 @@ void handleMeshEnable(void *Args)
                         error =  MB_ERROR_BANDSTEERING_ENABLED;
                         meshSetSyscfg(0, true);
                         pthread_mutex_unlock(&mesh_handler_mutex);
-                        return FALSE;
+                        return NULL;
                    }
             }
 
@@ -2147,7 +2152,6 @@ void handleMeshEnable(void *Args)
             //MeshInfo("Meshwifi has been %s\n",(enable?"enabled":"disabled"));
             MeshInfo("MESH_STATUS:%s\n",(enable?"enabled":"disabled"));
 
-            PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
             // Update the data model
             g_pMeshAgent->meshEnable = enable;
             g_pMeshAgent->meshStatus = (enable?MESH_WIFI_STATUS_INIT:MESH_WIFI_STATUS_OFF);
@@ -2170,7 +2174,6 @@ void handleMeshEnable(void *Args)
        meshError = error;
    }
    pthread_mutex_unlock(&mesh_handler_mutex);
-
    return NULL;
 }
 
@@ -2200,7 +2203,7 @@ bool Mesh_SetEnabled(bool enable, bool init, bool commitSyscfg)
         {
             bit_mask = bit_mask | 0x2;
         }
-	pthread_create(&tid, NULL, &handleMeshEnable, (void*)bit_mask);
+	pthread_create(&tid, NULL, handleMeshEnable, (void*)(intptr_t)bit_mask);
 
     }
 
@@ -2304,7 +2307,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_URL_CHANGE].sysStr, out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Mesh Url not set, using default %s\n", urlDefault);
-        Mesh_SetUrl(urlDefault, true);
+        Mesh_SetUrl((char *)urlDefault, true);
     } else {
         rc = strcmp_s(out_val, strlen(out_val), urlOld, &ind);
         ERR_CHK(rc);
@@ -2312,7 +2315,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         {
             // Using the old value, reset to new default
             MeshInfo("Mesh url was using old value, updating to %s\n", urlDefault);
-            Mesh_SetUrl(urlDefault, true);
+            Mesh_SetUrl((char *)urlDefault, true);
         }
         else
         {
@@ -2321,7 +2324,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
             } else {
                 MeshInfo("Mesh url is %s\n", out_val);
             }
-            unsigned char outBuf[128];
+            unsigned char outBuf[136];
             rc = strcpy_s(pMyObject->meshUrl, sizeof(pMyObject->meshUrl), out_val);
             if(rc != EOK)
             {
@@ -2635,7 +2638,7 @@ bool Mesh_UpdateConnectedDevice(char *mac, char *iface, char *host, char *status
  *
  * This function will notify plume agent about RFC changes
  */
-void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type)
+static void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type)
 {
     // send out notification to plume
     MeshSync mMsg = {0};
@@ -2660,7 +2663,6 @@ void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type)
     mMsg.data.rfcUpdate.type = type;
     MeshInfo("RFC_UPDATE: param: %s val:%s type=%d\n",mMsg.data.rfcUpdate.paramname, mMsg.data.rfcUpdate.paramval, mMsg.data.rfcUpdate.type);
     msgQSend(&mMsg);
-    return true;
 }
 
 /**
@@ -2669,7 +2671,7 @@ void Mesh_sendRFCUpdate(const char *param, const char *val, eRfcType type)
  * This function will notify plume agent to process the dnsmasq.lease
  * file
  */
-void Mesh_sendDhcpLeaseSync(void)
+static void Mesh_sendDhcpLeaseSync(void)
 {
     // send out notification to plume
     MeshSync mMsg = {0};
@@ -2689,7 +2691,6 @@ void Mesh_sendDhcpLeaseSync(void)
     //Prash: umask the MSB so that , we can go ahead sending dnsmasq lease notifications
     clientSocketsMask &= ~(1 << MAX_CONNECTED_CLIENTS);
 #endif
-    return true;
 }
 
 /**
@@ -2698,7 +2699,7 @@ void Mesh_sendDhcpLeaseSync(void)
  * This function will notify plume agent if any change in the
  * lease
  */
-void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostname, char *fingerprint)
+static void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostname, char *fingerprint)
 {
     // send out notification to plume
     MeshSync mMsg = {0};
@@ -2744,7 +2745,6 @@ void Mesh_sendDhcpLeaseUpdate(int msgType, char *mac, char *ipaddr, char *hostna
        }
 
     }
-    return true;
 }
 
 /**
@@ -2813,6 +2813,7 @@ static bool Mesh_Register_sysevent(ANSC_HANDLE hThisObject)
 **************************************************************************/
 static void *Mesh_sysevent_handler(void *data)
 {
+    UNREFERENCED_PARAMETER(data);
     // MeshInfo("Entering into %s\n",__FUNCTION__);
 
     async_id_t wifi_init_asyncid;
@@ -2904,7 +2905,7 @@ static void *Mesh_sysevent_handler(void *data)
             {
                 if (ret_val == MESH_WIFI_RESET)
                 {
-                     if( val)
+                     if( val[0] != '\0')
                          MeshInfo("received notification event %s val =%s \n", name, val);
                      else
                          MeshInfo("received notification event %s\n", name);
@@ -2926,7 +2927,7 @@ static void *Mesh_sysevent_handler(void *data)
                                * than having to be re-started.
                                */
                               // shutdown
-                              if (val && val[0] != '\0' && g_pMeshAgent->meshEnable)
+                              if ( val[0] != '\0' && g_pMeshAgent->meshEnable)
                               {
                                   rc = strcmp_s("start", strlen("start"), val, &ind);
                                   if((rc == EOK) && (!ind))
@@ -2954,7 +2955,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_RADIO_CHANNEL)
             {
                 // Radio config sysevents will be formatted: ORIG|index|channel
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3013,7 +3014,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_RADIO_CHANNEL_MODE)
             {
                 // Radio config sysevents will be formatted: ORIG|index|channel
-                if (val && val[0] != '\0')
+                if (val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3101,7 +3102,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_SSID_ADVERTISE)
             {
                 // SSID config sysevents will be formatted: ORIG|index|ssid
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3162,7 +3163,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_SSID_NAME)
             {
                 // SSID config sysevents will be formatted: ORIG|index|ssid
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3229,7 +3230,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_AP_SECURITY)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token=NULL;
@@ -3323,7 +3324,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_AP_KICK_ASSOC_DEVICE)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3389,7 +3390,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_AP_KICK_ALL_ASSOC_DEVICES)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3443,7 +3444,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_AP_ADD_ACL_DEVICE)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3509,7 +3510,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_AP_DEL_ACL_DEVICE)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3575,7 +3576,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_MAC_ADDR_CONTROL_MODE)
             {
                 // AP config sysevents will be formatted: ORIG|index|passphrase|secMode|encryptMode
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3643,14 +3644,13 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_STATUS)
             {
                 // mesh sysevents will be formatted: ORIG|mode
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
                     int idx = 0;
                     bool valFound = false;
                     bool process = true;
-                    char url[128] = {0};
                     eMeshWifiStatusType status = MESH_WIFI_STATUS_OFF;
 
                     // grab the first token
@@ -3721,7 +3721,7 @@ static void *Mesh_sysevent_handler(void *data)
                             {
                                   ERR_CHK(rc);
                                   MeshError("Error in copying mac in MESH_CLIENT_CONNECT\n");
-                                  return;
+                                  return NULL;
                             }
                             mMsg.data.meshConnect.isConnected = true; // all reported devices are "connected"
                             mMsg.data.meshConnect.iface = iface;
@@ -3731,7 +3731,7 @@ static void *Mesh_sysevent_handler(void *data)
                                 {
                                      ERR_CHK(rc);
                                      MeshError("Error in copying host in MESH_CLIENT_CONNECT\n");
-                                     return;
+                                     return NULL;
                                 }
                             }
 
@@ -3744,14 +3744,13 @@ static void *Mesh_sysevent_handler(void *data)
             }
             else if (ret_val == MESH_WIFI_ENABLE)
             {
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
                     int idx = 0;
                     bool valFound = false;
                     bool process = true;
-                    char url[128] = {0};
                     bool enabled = false;
 
                     // grab the first token
@@ -3809,7 +3808,7 @@ static void *Mesh_sysevent_handler(void *data)
             {
                 // mesh url changed
                 // Url config sysevents will be formatted: ORIG|url
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3868,7 +3867,7 @@ static void *Mesh_sysevent_handler(void *data)
             {
                 // mesh subnet change changed
                 // Subnet change config sysevents will be formatted: ORIG|gwIP|netmask
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -3941,7 +3940,7 @@ static void *Mesh_sysevent_handler(void *data)
             else if (ret_val == MESH_WIFI_TXRATE)
             {
                 // TxRate config sysevents will be formatted: ORIG|index|BasicRates:<basicRates>|OperationalRates:<operationalRates>
-                if (val && val[0] != '\0')
+                if ( val[0] != '\0')
                 {
                     const char delim[2] = "|";
                     char *token;
@@ -4057,7 +4056,7 @@ static void *Mesh_sysevent_handler(void *data)
           }
         }
     }
-
+    return NULL;
     // MeshInfo("Exiting from %s\n",__FUNCTION__);
 }
 

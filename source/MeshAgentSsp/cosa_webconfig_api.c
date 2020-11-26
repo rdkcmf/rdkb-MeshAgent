@@ -21,13 +21,15 @@
 #include "meshagent.h"
 #include "meshsync_msgs.h"
 #include "cosa_meshagent_internal.h"
- 
+#include <syscfg/syscfg.h>
+#include "cosa_apis_util.h"
 
 const char meshService[] = "meshwifi";
 extern MeshSync_MsgItem meshSyncMsgArr[];
 extern COSA_DATAMODEL_MESHAGENT* g_pMeshAgent;
 //extern MeshStatus_item meshWifiStatusArr[];
 
+void Mesh_EBCleanup();
 
 bool mesh_set_enabled(bool enable)
 {
@@ -195,7 +197,6 @@ int apply_mb_cache_ToDB(t_cache *cache)
 /* Read blob entries into a cache */
 int set_meshbackhaul_conf(meshbackhauldoc_t *mb,t_cache *cache)
 {
-    int count = 0;
     int ret = MB_OK;
  
     ret = validate_mesh_enable (mb->mesh_enable, mb->ethernetbackhaul_enable );
@@ -318,8 +319,6 @@ int rollback_MeshBackhaul()
     MeshInfo(" Entering %s \n",__FUNCTION__);
 
     int ret = 0;
-    int value;
-    char buf[10]={0};
 
     if (!is_cash_matches_db ("mesh_enable"))
     {

@@ -20,11 +20,14 @@
 #ifndef _RDKB_MESH_CLIENT_TABLE_C_
 #define _RDKB_MESH_CLIENT_TABLE_C_
 
+#include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include "mesh_client_table.h"
 #include "meshagent.h"
 #include "safec_lib_common.h"
+#include "ansc_wrapper_base.h"
 
 /*
  * @file mesh_client_table.c
@@ -75,10 +78,10 @@ typedef struct _RealClientTableIter
 
 
 // Fixed pool of hash items to select from
-HashItem hashItemPool[MAX_CONNECTED_CLIENTS] = {0};
+HashItem hashItemPool[MAX_CONNECTED_CLIENTS] = {{0}};
 
 // Hash Table
-HashTableEntry hashTable[MAX_NUMBER_HASH_BUCKETS] = {0};
+HashTableEntry hashTable[MAX_NUMBER_HASH_BUCKETS] = {{0}};
 
 
 /**************************************************************************/
@@ -101,6 +104,7 @@ void DumpClientTable();
  */
 unsigned int HashMe(eMeshIfaceType iface, char *mac)
 {
+    UNREFERENCED_PARAMETER(iface);
     unsigned int hashIdx = 0;
     const char s[2] = ":";
     char hashStr[MAX_MAC_ADDR_LEN] = {0};
@@ -360,7 +364,7 @@ void DumpHashStats() {
     }
 
     // Print out total number of connections
-    if (conTotal == sHashItemCount) {
+    if (conTotal == (int)sHashItemCount) {
         MeshInfo("Total number of connections = %d\n", conTotal);
     } else {
         MeshError("Connection count mismatch! Bucket count %d != Total Connections %d\n", conTotal, sHashItemCount);

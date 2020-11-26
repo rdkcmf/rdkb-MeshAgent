@@ -55,4 +55,4 @@
 #endif
 
 int CheckAndGetDevicePropertiesEntry( char *pOutput, int size, char *sDevicePropContent );
-void Cosa_print_uptime_meshagent( void  );
+void* Cosa_print_uptime_meshagent( void* arg  );

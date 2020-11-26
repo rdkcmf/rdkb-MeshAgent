@@ -20,10 +20,12 @@
 #include <stdio.h>
 #include "ansc_platform.h"
 #include "meshagent.h"
+#include "telemetry_busmessage_sender.h"
 
 int main(int argc, char* argv[])
 {   
-
+    UNREFERENCED_PARAMETER(argv);
+    UNREFERENCED_PARAMETER(argc);
     /* Initialize logger*/
     
     LOGInit();

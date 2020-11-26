@@ -33,6 +33,7 @@
 #include "ccsp_trace.h"
 #include "cosa_apis_util.h"
 #include "meshagent.h"
+#include "ansc_wrapper_base.h"
 
 extern int sysevent_fd_gs;
 extern token_t sysevent_token_gs;
@@ -93,6 +94,7 @@ int Mesh_SyseventGetStr(const char *name, unsigned char *out_value, int outbufsz
 
 int Mesh_SyseventSetStr(const char *name, unsigned char *value, int bufsz, bool toArm)
 {
+    UNREFERENCED_PARAMETER(toArm);
     int retVal = sysevent_set(sysevent_fd_gs, sysevent_token_gs, name, value, bufsz);
 
 #if defined(_COSA_INTEL_USG_ATOM_)
@@ -183,6 +185,7 @@ int Mesh_SysCfgGetStr(const char *name, unsigned char *out_value, int outbufsz)
 
 int Mesh_SysCfgSetStr(const char *name, unsigned char *str_value, bool toArm)
 {
+    UNREFERENCED_PARAMETER(toArm);
    int retval = 0;
    if ((retval = syscfg_set(NULL, name, str_value)) == 0) {
       retval = syscfg_commit();
@@ -259,7 +262,7 @@ int svcagt_set_service_state (const char *svc_name, bool state)
 		cmd_option = "stop";
 	}
 
-	MeshInfo(("%s %s\n", start_stop_msg, svc_name));
+	MeshInfo("%s %s\n", start_stop_msg, svc_name);
         /* Coverity Fix CID:58223 DC.STRING_BUFFER */
 	snprintf (cmdbuf,sizeof(cmdbuf), "%s %s %s.service", 
 		svcagt_systemctl_cmd, cmd_option, svc_name); 
