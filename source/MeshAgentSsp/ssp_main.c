@@ -39,6 +39,7 @@
 #include "ccsp_custom_logs.h"
 #include "safec_lib_common.h"
 #include "webconfig_framework.h"
+#include "print_uptime.h"
 
 /*----------------------------------------------------------------------------*/
 /*                                   Macros                                   */
@@ -297,41 +298,6 @@ int CheckAndGetDevicePropertiesEntry( char *pOutput, int size, char *sDeviceProp
 
 void Cosa_print_uptime_meshagent( void  )
 {
-    char acBoxType[ 16 ] = { 0 };
-    char buf[256] = {0};
-    errno_t rc       = -1;
-    int     ind      = -1;
-    
     pthread_detach(pthread_self());
-    // Get BOX TYPE from device properties
-    if( 0 == CheckAndGetDevicePropertiesEntry( acBoxType, sizeof( acBoxType ),"BOX_TYPE" ) )
-    {
-        CcspTraceInfo(("%s - Box Type is %s \n",__FUNCTION__, acBoxType));
-        // If it is XB3 then we need to do RPC client operation to do further
-        // If it is non-XB3 then we need to do operation here itself
-
-        if( ( acBoxType[ 0 ] != '\0' ) )
-        {
-            rc = strcmp_s("XB3", strlen("XB3"), acBoxType , &ind);
-            ERR_CHK(rc); 
-            if((ind  == 0) && (rc == EOK))
-            {
-                char acArmArpingIP[ 64 ] = { 0 };
-                if( 0 == CheckAndGetDevicePropertiesEntry( acArmArpingIP, sizeof( acArmArpingIP ),"ARM_ARPING_IP" ) )
-                {
-                    if ( acArmArpingIP[ 0 ] != '\0' )
-                    {
-                     CcspTraceInfo(("%s Reported an ARM IP of %s \n", __FUNCTION__, acArmArpingIP));
-                     /*Coverity Fix CID:64718 DC.STRING_BUFFER */
-                     snprintf(buf,sizeof(buf), "/usr/bin/rpcclient %s \"print_uptime boot_to_meshagent_uptime\"", acArmArpingIP);
-                     system(buf); 
-                   }
-                }
-	    }
-            else
-            {
-                system("print_uptime \"boot_to_meshagent_uptime\"");
-            }
-        }
-    }
+    print_uptime("boot_to_meshagent_uptime",NULL);
 }
