@@ -2010,8 +2010,9 @@ bool Mesh_SetEnabled(bool enable, bool init)
     {
         if (!enable)
         {   // if mesh is being disabled, then also disable ovs
-            MeshWarning("Disabling OVS RFC, since mesh will be disabled!\n");
+            MeshWarning("Disabling OVS and GRE_ACC RFC, since mesh will be disabled!\n");
             Mesh_SetOVS(false, false);
+            Mesh_SetGreAcc(false,false);
         }
         meshSetSyscfg(enable);
  	pthread_t tid;
