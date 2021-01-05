@@ -1662,68 +1662,44 @@ void meshSetEthbhaulSyscfg(bool enable)
     MeshInfo("eth bhaul enable set in the syscfg successfully\n");
 }
 
-bool meshSetGreAccSyscfg(bool enable)
+void meshSetGreAccSyscfg(bool enable)
 {
-    int i = 0;
-    bool success = false;
+    int i =0;
 
     MeshInfo("%s Setting GRE_ACC enable in syscfg to %d\n", __FUNCTION__, enable);
-    if(Mesh_SysCfgSetStr("mesh_gre_acc_enable", (enable?"true":"false"), true) != 0)
-    {
-        MeshInfo("Failed to set the GRE_ACC Enable in syscfg, retrying 5 times\n");
-        for(i=0; i<5; i++)
-        {
-            if(!Mesh_SysCfgSetStr("mesh_gre_acc_enable", (enable?"true":"false"), true))
-            {
-                MeshInfo("GRE_ACC syscfg set passed in %d attempt\n", i+1);
-                success = true;
-                break;
-             }
-             else
-             {
-                 MeshInfo("GRE_ACC syscfg set retrial failed in %d attempt\n", i+1);
-             }
-        }
-    }
-    else
-    {
-        MeshInfo("GRE_ACC enable set in the syscfg successfully\n");
-        success = true;
-    }
-
-    return success;
+    if(Mesh_SysCfgSetStr("mesh_gre_acc_enable", (enable?"true":"false"), true) != 0) {
+         MeshInfo("Failed to set the GRE_ACC Enable in syscfg, retrying 5 times\n");
+         for(i=0; i<5; i++) {
+         if(!Mesh_SysCfgSetStr("mesh_gre_acc_enable", (enable?"true":"false"), true)) {
+           MeshInfo("GRE_ACC syscfg set passed in %d attempt\n", i+1);
+           break;
+         }
+         else
+          MeshInfo("GRE_ACC syscfg set retrial failed in %d attempt\n", i+1);
+      }
+   }
+   else
+    MeshInfo("GRE_ACC enable set in the syscfg successfully\n");
 }
 
-bool meshSetOVSSyscfg(bool enable)
+void meshSetOVSSyscfg(bool enable)
 {
-    int i = 0;
-    bool success = false;
+    int i =0;
 
     MeshInfo("%s Setting OVS enable in syscfg to %d\n", __FUNCTION__, enable);
-    if(Mesh_SysCfgSetStr("mesh_ovs_enable", (enable?"true":"false"), true) != 0)
-    {
-        MeshInfo("Failed to set the OVS Enable in syscfg, retrying 5 times\n");
-        for(i=0; i<5; i++)
-        {
-            if(!Mesh_SysCfgSetStr("mesh_ovs_enable", (enable?"true":"false"), true))
-            {
-                MeshInfo("ovs syscfg set passed in %d attempt\n", i+1);
-                success = true;
-                break;
-            }
-            else
-            {
-                MeshInfo("ovs syscfg set retrial failed in %d attempt\n", i+1);
-            }
-        }
-    }
-    else
-    {
-        MeshInfo("ovs enable set in the syscfg successfully\n");
-        success = true;
-    }
-
-    return success;
+    if(Mesh_SysCfgSetStr("mesh_ovs_enable", (enable?"true":"false"), true) != 0) {
+         MeshInfo("Failed to set the OVS Enable in syscfg, retrying 5 times\n");
+         for(i=0; i<5; i++) {
+         if(!Mesh_SysCfgSetStr("mesh_ovs_enable", (enable?"true":"false"), true)) {
+           MeshInfo("ovs syscfg set passed in %d attempt\n", i+1);
+           break;
+         }
+         else
+          MeshInfo("ovs syscfg set retrial failed in %d attempt\n", i+1);
+      }
+   }
+   else
+    MeshInfo("ovs enable set in the syscfg successfully\n");
 }
 
 void meshSetSyscfg(bool enable)
@@ -1806,31 +1782,18 @@ bool Mesh_SetGreAcc(bool enable, bool init)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_gre_acc_enable") != enable)
     {
-        if (enable && Mesh_GetEnabled("mesh_ovs_enable"))
-        {   // mesh_ovs_enable has higher priority over mesh_gre_acc_enable,
-            // therefore when ovs is enabled, disable gre acc.
-            MeshWarning("Disabling GreAcc RFC, since OVS is currently enabled!\n");
-            enable = false;
-        }
-        if (!meshSetGreAccSyscfg(enable))
-        {
-            MeshError("Unable to %s GreAcc RFC\n", (enable?"enable":"disable"));
-            return false;
-        }
+        if ( (enable == TRUE) && (Mesh_GetEnabled("mesh_ovs_enable") == TRUE))
+            return FALSE;
+        meshSetGreAccSyscfg(enable);
         g_pMeshAgent->GreAccEnable = enable;
-
         //Send this as an RFC update to plume manager
         if(enable)
-        {
-            MeshInfo("GreAcc_RFC_changed_to_enabled\n");
-        }
+         MeshInfo("GreAcc_RFC_changed_to_enabled\n");
         else
-        {
-            MeshInfo("GreAcc_changed_to_disabled\n");
-        }
+         MeshInfo("GreAcc_changed_to_disabled\n");
         Mesh_sendRFCUpdate("GRE_ACC.Enable", enable ? "true" : "false", rfc_boolean);
     }
-    return true;
+    return TRUE;
 }
 
 /**
@@ -1843,38 +1806,18 @@ bool Mesh_SetOVS(bool enable, bool init)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_ovs_enable") != enable)
     {
-        if (enable)
-        {
-            if (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
-            {
-                MeshWarning("Disabling OVS RFC, since mesh is currently disabled!\n");
-                enable = false;
-            }
-            else if (Mesh_GetEnabled("mesh_gre_acc_enable"))
-            {   // mesh_ovs_enable has higher priority over mesh_gre_acc_enable,
-                // therefore disable Gre Acc.
-                Mesh_SetGreAcc(false, false);
-            }
-        }
-        if (!meshSetOVSSyscfg(enable))
-        {
-            MeshError("Unable to %s OVS RFC\n", (enable?"enable":"disable"));
-            return false;
-        }
+	if ( (enable == TRUE) && (Mesh_GetEnabled("mesh_gre_acc_enable") == TRUE))
+            return FALSE;
+        meshSetOVSSyscfg(enable);
         g_pMeshAgent->OvsEnable = enable;
-
         //Send this as an RFC update to plume manager
         if(enable)
-        {
-            MeshInfo("OVS_RFC_changed_to_enabled\n");
-        }
+         MeshInfo("OVS_RFC_changed_to_enabled\n");
         else
-        {
-            MeshInfo("OVS_RFC_changed_to_disabled\n");
-        }
+         MeshInfo("OVS_RFC_changed_to_disabled\n");
         Mesh_sendRFCUpdate("OVS.Enable", enable ? "true" : "false", rfc_boolean);
     }
-    return true;
+    return TRUE;
 }
 
 int getMeshErrorCode()
@@ -2002,23 +1945,16 @@ void handleMeshEnable(void *Args)
 bool Mesh_SetEnabled(bool enable, bool init)
 {
     // MeshInfo("Entering into %s\n",__FUNCTION__);
-    bool success = true;
-    unsigned char bit_mask = 1;
+    bool success = TRUE;
+    unsigned char bit_mask = 1; 
 
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) != enable)
     {
-        if (!enable)
-        {   // if mesh is being disabled, then also disable ovs
-            MeshWarning("Disabling OVS RFC, since mesh will be disabled!\n");
-            Mesh_SetOVS(false, false);
-        }
         meshSetSyscfg(enable);
  	pthread_t tid;
         if(enable)
-        {
             bit_mask = bit_mask | 0x2;
-        }
 	pthread_create(&tid, NULL, &handleMeshEnable, (void*)bit_mask);
 
     }
@@ -2305,7 +2241,8 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         }
     }
 
-    out_val[0]='\0';
+    out_val[0]='\0'; 
+
     if(Mesh_SysCfgGetStr("mesh_ovs_enable", out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Syscfg error, Setting OVS mode to default\n");
@@ -2315,16 +2252,17 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     {
         rc = strcmp_s("true",strlen("true"),out_val,&ind);
         ERR_CHK(rc);
-        if((ind == 0) && (rc == EOK))
+        if((ind ==0 ) && (rc == EOK))
         {
            MeshInfo("Setting initial OVS mode to true\n");
            Mesh_SetOVS(true,true);
+           g_pMeshAgent->OvsEnable = true;
         }
         else
         {
            rc = strcmp_s("false",strlen("false"),out_val,&ind);
            ERR_CHK(rc);
-           if((ind == 0) && (rc == EOK))
+           if((ind ==0 ) && (rc == EOK))
            {
                MeshInfo("Setting initial OVS mode to false\n");
                Mesh_SetOVS(false,true);
@@ -2346,6 +2284,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
           if (strncmp(out_val, "true", 4) == 0) {
                MeshInfo("Setting initial gre acc mode to true\n");
                Mesh_SetGreAcc(true,true);
+               g_pMeshAgent->GreAccEnable = true;
           } else if (strncmp(out_val, "false", 5) == 0) {
                MeshInfo("Setting initial gre acc mode to false\n");
                Mesh_SetGreAcc(false,true);
