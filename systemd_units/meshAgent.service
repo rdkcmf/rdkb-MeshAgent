@@ -19,7 +19,6 @@
 [Unit]
 Description=Mesh Agent service
 #After=CcspCrSsp.service
-ConditionPathExists=/tmp/pam_initialized
 ConditionPathExists=/tmp/wifi_initialized
 
 [Service]

@@ -21,7 +21,6 @@ Description=Triggers meshAgent.service when wifi and pam initialized files have 
 Documentation= man:systemd.path
 
 [Path]
-PathExists=/tmp/pam_initialized
 PathExists=/tmp/wifi_initialized
 
 [Install]
