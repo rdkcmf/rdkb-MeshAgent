@@ -372,7 +372,7 @@ MeshAgent_GetParamStringValue
     ERR_CHK(rc);
     if( (ind == 0) && (rc == EOK))
     {
-       MeshError(("Data Get Not supported\n"));
+       MeshInfo(("Data Get Not supported\n"));
        return 0;
     }
 
