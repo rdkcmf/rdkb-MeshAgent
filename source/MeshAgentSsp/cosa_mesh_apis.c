@@ -2423,8 +2423,12 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
            ERR_CHK(rc);
            rc1 = strcmp_s("false",strlen("false"),mesh_enable,&ind1);
            ERR_CHK(rc1);
-           if(((ind ==0 ) && (rc == EOK)) || ((ind1 == 0) && (rc1 == EOK)))
-               Mesh_SetEnabled(mesh_enable, true, true);
+           if(((ind ==0 ) && (rc == EOK))) {
+               Mesh_SetEnabled(true, true, true);
+           }
+           else if (((ind1 == 0) && (rc1 == EOK))) {
+               Mesh_SetEnabled(false, true, true);
+           }
            else
            {
                MeshInfo("mesh_enable returned null from syscfg.db final attempt for recovery\n");
