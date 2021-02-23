@@ -87,6 +87,7 @@ const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 #define POD_LINK_SCRIPT "/usr/ccsp/wifi/mesh_status.sh"
 #define POD_IP_PREFIX   "192.168.245."
 #define XF3_PLATFORM "XF3"
+#define XB3_PLATFORM "XB3"
 #define RADIO_ENABLE_24  "Device.WiFi.Radio.1.Enable"
 #define RADIO_ENABLE_50  "Device.WiFi.Radio.2.Enable"
 #define RADIO_STATUS_24  "Device.WiFi.Radio.1.Status"
@@ -95,6 +96,7 @@ const int MAX_MESSAGES=10;  // max number of messages the can be in the queue
 #define STATE_FALSE "false"
 
 static bool isPaceXF3 = false;
+bool isXB3Platform = false;
 #define ETHBHAUL_SWITCH "/usr/sbin/deviceinfo.sh"
 
 static bool s_SysEventHandler_ready = false;
@@ -1498,11 +1500,10 @@ BOOL is_SSID_enabled()
     return ret_b;
 }
 
-void is_xf3_platform()
+void is_xf3_xb3_platform()
 {
     FILE *cmd;
     char platform[32] = {'\0'};
-    int ind = -1;
 
     cmd = popen("grep \"BOX_TYPE\" /etc/device.properties | cut -d \"=\" -f2","r");
     if(cmd == NULL) {
@@ -1512,12 +1513,13 @@ void is_xf3_platform()
     fgets(platform, sizeof(platform), cmd);
     pclose(cmd);
     platform[strlen(platform) -1] = '\0';
-    ind = strcmp(XF3_PLATFORM,platform);
-    if ( ind ==0 )
-    {
+    if (strncmp(XF3_PLATFORM,platform, sizeof(XF3_PLATFORM)) == 0) {
         isPaceXF3 = true;
+    } else if (strncmp(XB3_PLATFORM, platform, sizeof(XB3_PLATFORM)) == 0) {
+        isXB3Platform = true;
     }
-    MeshInfo("Is XF3 platform check is = %d\n",isPaceXF3);
+    MeshInfo("platform check XF3:%d,XB3:%d\n",
+                    isPaceXF3,isXB3Platform);
 }
 
 BOOL radio_check()
@@ -1693,7 +1695,6 @@ bool meshSetGreAccSyscfg(bool enable)
 
     return success;
 }
-
 bool meshSetOVSSyscfg(bool enable)
 {
     int i = 0;
@@ -1726,13 +1727,14 @@ bool meshSetOVSSyscfg(bool enable)
     return success;
 }
 
-void meshSetSyscfg(bool enable)
+void meshSetSyscfg(bool enable, bool commitSyscfg)
 {
     int i =0;
     FILE *fpMeshFile = NULL;
 
-    MeshInfo("%s Setting mesh enable in syscfg to %d\n", __FUNCTION__, enable);
-    if(Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, (enable?"true":"false"), true) != 0) {
+    MeshInfo("%s Commitsyscfg:%d Setting mesh enable in syscfg to %d\n",
+		    __FUNCTION__,commitSyscfg,enable);
+    if(commitSyscfg && (Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, (enable?"true":"false"), true) != 0)) {
          MeshInfo("Failed to set the Mesh Enable in syscfg, retrying 5 times\n");
          for(i=0; i<5; i++) {
          if(!Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, (enable?"true":"false"), true)) {
@@ -1769,14 +1771,19 @@ void meshSetSyscfg(bool enable)
  *
  * This function will enable/disable the Mesh Pod ethernet backhaul feature enable/disable
  */
-bool Mesh_SetMeshEthBhaul(bool enable, bool init)
+bool Mesh_SetMeshEthBhaul(bool enable, bool init, bool commitSyscfg)
 {
     char cmd[256] = {0};
     int rc = -1;
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr) != enable)
     {
-        meshSetEthbhaulSyscfg(enable);
+	
+	MeshInfo("%s: Ethbhaul Commit:%d,Enable:%d",
+			__FUNCTION__,commitSyscfg,enable);
+	if(commitSyscfg) {
+        	meshSetEthbhaulSyscfg(enable);
+	}
         g_pMeshAgent->PodEthernetBackhaulEnable = enable;
         //Send this as an RFC update to plume manager
         Mesh_sendRFCUpdate("PodEthernetBackhaul.Enable", enable ? "true" : "false", rfc_boolean);
@@ -1801,18 +1808,21 @@ bool Mesh_SetMeshEthBhaul(bool enable, bool init)
  *
  * This function will enable/disable the GRE acceleration mode
  */
-bool Mesh_SetGreAcc(bool enable, bool init)
+bool Mesh_SetGreAcc(bool enable, bool init, bool commitSyscfg)
 {
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_gre_acc_enable") != enable)
     {
-        if (enable && Mesh_GetEnabled("mesh_ovs_enable"))
+	MeshInfo("%s: GRE Acc Commit:%d,Enable:%d",
+			__FUNCTION__,commitSyscfg,enable);
+        if (enable && (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) ||
+		Mesh_GetEnabled("mesh_ovs_enable")) )
         {   // mesh_ovs_enable has higher priority over mesh_gre_acc_enable,
             // therefore when ovs is enabled, disable gre acc.
             MeshWarning("Disabling GreAcc RFC, since OVS is currently enabled!\n");
             enable = false;
         }
-        if (!meshSetGreAccSyscfg(enable))
+        if (commitSyscfg && !meshSetGreAccSyscfg(enable))
         {
             MeshError("Unable to %s GreAcc RFC\n", (enable?"enable":"disable"));
             return false;
@@ -1832,17 +1842,18 @@ bool Mesh_SetGreAcc(bool enable, bool init)
     }
     return true;
 }
-
 /**
  * @brief Mesh Agent OpenvSwitch Set Enable/Disable
  *
  * This function will enable/disable the OpenvSwitch mode
  */
-bool Mesh_SetOVS(bool enable, bool init)
+bool Mesh_SetOVS(bool enable, bool init, bool commitSyscfg)
 {
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_ovs_enable") != enable)
     {
+	MeshInfo("%s: OVS Enable Commit:%d,Enable:%d",
+			__FUNCTION__,commitSyscfg,enable);
         if (enable)
         {
             if (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
@@ -1850,13 +1861,13 @@ bool Mesh_SetOVS(bool enable, bool init)
                 MeshWarning("Disabling OVS RFC, since mesh is currently disabled!\n");
                 enable = false;
             }
-            else if (Mesh_GetEnabled("mesh_gre_acc_enable"))
+            else if (isXB3Platform &&  Mesh_GetEnabled("mesh_gre_acc_enable"))
             {   // mesh_ovs_enable has higher priority over mesh_gre_acc_enable,
                 // therefore disable Gre Acc.
-                Mesh_SetGreAcc(false, false);
+                Mesh_SetGreAcc(false, false, true);
             }
         }
-        if (!meshSetOVSSyscfg(enable))
+        if ( commitSyscfg && !meshSetOVSSyscfg(enable))
         {
             MeshError("Unable to %s OVS RFC\n", (enable?"enable":"disable"));
             return false;
@@ -1914,7 +1925,7 @@ void handleMeshEnable(void *Args)
             if(!radio_check() || is_bridge_mode_enabled()) {
               MeshError("Mesh Pre-check conditions failed, setting mesh wifi to disabled \n");
               error =  MB_ERROR_PRECONDITION_FAILED;
-              meshSetSyscfg(0);
+              meshSetSyscfg(0, true);
               pthread_mutex_unlock(&mesh_handler_mutex);
               return FALSE;
             }
@@ -1922,7 +1933,7 @@ void handleMeshEnable(void *Args)
                    if(set_wifi_boolean_enable("Device.WiFi.X_RDKCENTRAL-COM_BandSteering.Enable", "false")==FALSE) {
                         MeshError(("MESH_ERROR:Fail to enable Mesh because fail to turn off Band Steering\n"));
                         error =  MB_ERROR_BANDSTEERING_ENABLED;
-                        meshSetSyscfg(0);
+                        meshSetSyscfg(0, true);
                         pthread_mutex_unlock(&mesh_handler_mutex);
                         return FALSE;
                    }
@@ -1944,7 +1955,7 @@ void handleMeshEnable(void *Args)
                     MeshError("meshwifi service failed to run, igonoring the mesh enablement\n");
 		    t2_event_d("WIFI_ERROR_meshwifiservice_failure", 1);
                     error = MB_ERROR_MESH_SERVICE_START_FAIL;
-                    meshSetSyscfg(0);
+                    meshSetSyscfg(0, true);
                     success = FALSE;
                 }
             }
@@ -1956,7 +1967,7 @@ void handleMeshEnable(void *Args)
                 // returns "0" on success
                 if ((err = svcagt_set_service_state(meshServiceName, false)) != 0)
                 {
-                    meshSetSyscfg(0);
+                    meshSetSyscfg(0, true);
                     error = MB_ERROR_MESH_SERVICE_STOP_FAIL;
                     success = FALSE;
                 }
@@ -1999,7 +2010,7 @@ void handleMeshEnable(void *Args)
  *
  * This function will enable/disable the Mesh service
  */
-bool Mesh_SetEnabled(bool enable, bool init)
+bool Mesh_SetEnabled(bool enable, bool init, bool commitSyscfg)
 {
     // MeshInfo("Entering into %s\n",__FUNCTION__);
     bool success = true;
@@ -2008,13 +2019,15 @@ bool Mesh_SetEnabled(bool enable, bool init)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) != enable)
     {
-        if (!enable)
+        if (!enable && !init)
         {   // if mesh is being disabled, then also disable ovs
             MeshWarning("Disabling OVS and GRE_ACC RFC, since mesh will be disabled!\n");
-            Mesh_SetOVS(false, false);
-            Mesh_SetGreAcc(false,false);
+            Mesh_SetOVS(false, false, true);
+	    if(isXB3Platform) {
+            	Mesh_SetGreAcc(false,false,true);
+		}
         }
-        meshSetSyscfg(enable);
+        meshSetSyscfg(enable, commitSyscfg);
  	pthread_t tid;
         if(enable)
         {
@@ -2091,11 +2104,11 @@ static void Mesh_Recovery()
 {
     if(!access(MESH_ENABLED, F_OK)) {
      MeshInfo("mesh flag is enabled in nvram, setting mesh enabled\n");
-     Mesh_SetEnabled(true, true);
+     Mesh_SetEnabled(true, true, true);
     } else
     {
      MeshInfo("mesh flag not found in nvram, setting mesh disabled\n");
-     Mesh_SetEnabled(false, true);
+     Mesh_SetEnabled(false, true, true);
     }
 }
 /**
@@ -2118,7 +2131,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     // Check to see if the mesh dev flag is set
     bool devFlag = (access(meshDevFile, F_OK) == 0);
     //Fetch device name, this temporary fix should be removed when RDKB-31468 ticket is fixed
-    is_xf3_platform();
+    is_xf3_xb3_platform();
     // set URL
     out_val[0]='\0';
     if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_URL_CHANGE].sysStr, out_val, sizeof(out_val)) != 0)
@@ -2204,7 +2217,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
               ERR_CHK(rc);
               if((ind == 0 ) && (rc == EOK))
               {
-                  Mesh_SetEnabled(true, true);
+                  Mesh_SetEnabled(true, true, true);
               }
               else
               {
@@ -2213,7 +2226,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
                   if((ind == 0 ) && (rc == EOK))
                   {
                      MeshInfo("Setting initial mesh wifi to disabled\n");
-                     Mesh_SetEnabled(false, true);
+                     Mesh_SetEnabled(false, true, true);
                   }
                   else
                       Mesh_Recovery();
@@ -2244,7 +2257,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
            rc1 = strcmp_s("false",strlen("false"),mesh_enable,&ind1);
            ERR_CHK(rc1);
            if(((ind ==0 ) && (rc == EOK)) || ((ind1 == 0) && (rc1 == EOK)))
-               Mesh_SetEnabled(mesh_enable, true);
+               Mesh_SetEnabled(mesh_enable, true, true);
            else
            {
                MeshInfo("mesh_enable returned null from syscfg.db final attempt for recovery\n");
@@ -2258,14 +2271,14 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         rc = strcmp_s("true",strlen("true"),out_val,&ind);
         ERR_CHK(rc);
         if((ind == 0) && (rc == EOK)){
-            Mesh_SetEnabled(true, true);
+            Mesh_SetEnabled(true, true, false);
         }
         else {
             rc = strcmp_s("false",strlen("false"),out_val,&ind);
             ERR_CHK(rc); 
             if((ind == 0) && (rc == EOK)){
                 MeshInfo("Setting initial mesh wifi default to disabled\n");
-               Mesh_SetEnabled(false, true);
+               Mesh_SetEnabled(false, true, false);
             }
             else {
             MeshInfo("Unexpected value from syscfg , doing recovery\n");
@@ -2278,7 +2291,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     if(Mesh_SysCfgGetStr(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr, out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Syscfg error, Setting Ethbhaul mode to default FALSE\n");
-        Mesh_SetMeshEthBhaul(false,true);
+        Mesh_SetMeshEthBhaul(false,true,true);
     }
     else
     {
@@ -2287,7 +2300,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         if((ind ==0 ) && (rc == EOK))
         {
            MeshInfo("Setting initial ethbhaul mode to true\n");
-           Mesh_SetMeshEthBhaul(true,true);
+           Mesh_SetMeshEthBhaul(true,true,false);
         }
         else
         {
@@ -2296,12 +2309,12 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
            if((ind ==0 ) && (rc == EOK))
            {
                MeshInfo("Setting initial ethbhaul mode to false\n");
-               Mesh_SetMeshEthBhaul(false,true);
+               Mesh_SetMeshEthBhaul(false,true,false);
            }
            else
            {
                MeshInfo("Ethernet Bhaul status error from syscfg , setting default FALSE\n");
-               Mesh_SetMeshEthBhaul(false,true);
+               Mesh_SetMeshEthBhaul(false,true,true);
            }
         }
     }
@@ -2310,16 +2323,17 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     if(Mesh_SysCfgGetStr("mesh_ovs_enable", out_val, sizeof(out_val)) != 0)
     {
         MeshInfo("Syscfg error, Setting OVS mode to default\n");
-        Mesh_SetOVS(false,true);
+        Mesh_SetOVS(false,true,true);
     }
     else
     {
         rc = strcmp_s("true",strlen("true"),out_val,&ind);
         ERR_CHK(rc);
-        if((ind == 0) && (rc == EOK))
+        if((ind == 0) && (rc == EOK) &&
+			Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
         {
            MeshInfo("Setting initial OVS mode to true\n");
-           Mesh_SetOVS(true,true);
+           Mesh_SetOVS(true,true,false);
         }
         else
         {
@@ -2328,33 +2342,50 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
            if((ind == 0) && (rc == EOK))
            {
                MeshInfo("Setting initial OVS mode to false\n");
-               Mesh_SetOVS(false,true);
+               Mesh_SetOVS(false,true,false);
            }
            else
            {
               MeshInfo("OVS status error from syscfg , setting default\n");
-              Mesh_SetOVS(false,true);
+              Mesh_SetOVS(false,true,true);
            }
          }
      }
-
-     out_val[0]='\0';
-     if(Mesh_SysCfgGetStr("mesh_gre_acc_enable", out_val, sizeof(out_val)) != 0)
-     {
+    if(isXB3Platform) {
+    out_val[0]='\0';
+    if(Mesh_SysCfgGetStr("mesh_gre_acc_enable", out_val, sizeof(out_val)) != 0)
+    {
              MeshInfo("Syscfg error, Setting gre acc mode to default\n");
-             Mesh_SetGreAcc(false,true);
-     } else {
-          if (strncmp(out_val, "true", 4) == 0) {
+             Mesh_SetGreAcc(false,true,true);
+    }
+    else
+    {
+        rc = strcmp_s("true",strlen("true"),out_val,&ind);
+        ERR_CHK(rc);
+        if((ind == 0) && (rc == EOK) &&
+			Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
+        {
                MeshInfo("Setting initial gre acc mode to true\n");
-               Mesh_SetGreAcc(true,true);
-          } else if (strncmp(out_val, "false", 5) == 0) {
+               Mesh_SetGreAcc(true,true,false);
+        }
+        else
+        {
+           rc = strcmp_s("false",strlen("false"),out_val,&ind);
+           ERR_CHK(rc);
+           if((ind == 0) && (rc == EOK))
+           {
                MeshInfo("Setting initial gre acc mode to false\n");
-               Mesh_SetGreAcc(false,true);
-          } else {
+               Mesh_SetGreAcc(false,true,false);
+           }
+           else
+           {
                MeshInfo("gre acc status error from syscfg , setting default\n");
-               Mesh_SetGreAcc(false,true);
-          }
+               Mesh_SetGreAcc(false,true,true);
+           }
+         }
      }
+    }
+
     // MeshInfo("Exiting from %s\n",__FUNCTION__);
 }
 
@@ -3599,7 +3630,7 @@ static void *Mesh_sysevent_handler(void *data)
                             }
                         }
                         // We filled our data structure so we can send it off
-                        Mesh_SetEnabled(enabled, false);
+                        Mesh_SetEnabled(enabled, false, true);
                     }
                 }
             }

@@ -30,6 +30,7 @@
 #include "helpers.h"
 
 #define DEBUG_INI_NAME  "/etc/debug.ini"
+extern bool isXB3Platform;
 
 extern COSA_DATAMODEL_MESHAGENT* g_pMeshAgent;
 
@@ -189,6 +190,7 @@ MeshAgent_GetParamBoolValue
     }
     return FALSE;
 }
+
 
 /**********************************************************************
 
@@ -551,7 +553,7 @@ MeshAgent_SetParamBoolValue
               } 
          }
 
-        Mesh_SetEnabled(bValue, false);
+        Mesh_SetEnabled(bValue, false, true);
         return TRUE;
     }
     else
@@ -561,7 +563,7 @@ MeshAgent_SetParamBoolValue
         if( (ind == 0) && (rc == EOK))
         {
             MeshInfo("Pod ethernet bhaul mode set\n");
-            Mesh_SetMeshEthBhaul(bValue,false);
+            Mesh_SetMeshEthBhaul(bValue,false,true);
             return TRUE; 
         }    
         else
@@ -569,6 +571,7 @@ MeshAgent_SetParamBoolValue
     }
     return FALSE;
 }
+
 
 /**********************************************************************
 
@@ -612,15 +615,19 @@ GreAcc_SetParamBoolValue
     int ind = -1;
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
 
+	if (isXB3Platform) {
     rc = strcmp_s("Enable",strlen("Enable"), ParamName,&ind);
     ERR_CHK(rc);
     if( (ind == 0) && (rc == EOK))
     {
      MeshInfo("Gre Acc mode set\n");
-     return Mesh_SetGreAcc(bValue,false);
+     return Mesh_SetGreAcc(bValue,false, true);
     }
     else
      MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+    return FALSE;
+	}
+     MeshWarning(("GRE Acc Unsupported '%s'\n", ParamName));
     return FALSE;
 }
 
@@ -671,8 +678,8 @@ OVS_SetParamBoolValue
     ERR_CHK(rc);
     if( (ind == 0) && (rc == EOK))
     {
-     MeshInfo("OVS mode set\n");
-     return Mesh_SetOVS(bValue,false);
+     MeshInfo("OVS mode set with commit\n");
+     return Mesh_SetOVS(bValue,false,true);
     }
     else
      MeshWarning(("Unsupported parameter '%s'\n", ParamName));

@@ -83,7 +83,7 @@ bool Mesh_SetUrl(char *url, bool init);
  *
  * This function will enable/disable the Mesh service
  */
-bool Mesh_SetEnabled(bool enable, bool init);
+bool Mesh_SetEnabled(bool enable, bool init, bool commitSyscfg);
 
 /**
  * @brief Mesh Agent Set Mesh State
