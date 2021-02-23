@@ -40,7 +40,7 @@ bool mesh_set_enabled(bool enable)
     // If the enable value is different or this is during setup - make it happen.
     if (Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) != enable)
     {
-        meshSetSyscfg(enable);
+        meshSetSyscfg(enable, true);
         handleMeshEnable((void *)bit_mask);
     }
 
@@ -185,7 +185,7 @@ int apply_mb_cache_ToDB(t_cache *cache)
     ret = mesh_set_enabled(cache->mesh_enable);
     if (ret == MB_OK)
     {
-        Mesh_SetMeshEthBhaul(cache->ethernetbackhaul_enable, false);
+        Mesh_SetMeshEthBhaul(cache->ethernetbackhaul_enable, false, true);
     }
 
     return ret;
