@@ -615,19 +615,19 @@ GreAcc_SetParamBoolValue
     int ind = -1;
     PCOSA_DATAMODEL_MESHAGENT       pMyObject     = (PCOSA_DATAMODEL_MESHAGENT)g_pMeshAgent;
 
-	if (isXB3Platform) {
-    rc = strcmp_s("Enable",strlen("Enable"), ParamName,&ind);
-    ERR_CHK(rc);
-    if( (ind == 0) && (rc == EOK))
-    {
-     MeshInfo("Gre Acc mode set\n");
-     return Mesh_SetGreAcc(bValue,false, true);
+    if (isXB3Platform) {
+        rc = strcmp_s("Enable",strlen("Enable"), ParamName,&ind);
+        ERR_CHK(rc);
+        if( (ind == 0) && (rc == EOK))
+        {
+            MeshInfo("Gre Acc mode set\n");
+            return Mesh_SetGreAcc(bValue,false, true);
+        }
+        else
+            MeshWarning(("Unsupported parameter '%s'\n", ParamName));
+        return FALSE;
     }
-    else
-     MeshWarning(("Unsupported parameter '%s'\n", ParamName));
-    return FALSE;
-	}
-     MeshWarning(("GRE Acc Unsupported '%s'\n", ParamName));
+    MeshWarning(("GRE Acc Unsupported '%s'\n", ParamName));
     return FALSE;
 }
 

@@ -1733,8 +1733,9 @@ void meshSetSyscfg(bool enable, bool commitSyscfg)
     FILE *fpMeshFile = NULL;
 
     MeshInfo("%s Commitsyscfg:%d Setting mesh enable in syscfg to %d\n",
-		    __FUNCTION__,commitSyscfg,enable);
-    if(commitSyscfg && (Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, (enable?"true":"false"), true) != 0)) {
+        __FUNCTION__,commitSyscfg,enable);
+    if(commitSyscfg &&
+        (Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, (enable?"true":"false"), true) != 0)) {
          MeshInfo("Failed to set the Mesh Enable in syscfg, retrying 5 times\n");
          for(i=0; i<5; i++) {
          if(!Mesh_SysCfgSetStr(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr, (enable?"true":"false"), true)) {
@@ -1779,11 +1780,11 @@ bool Mesh_SetMeshEthBhaul(bool enable, bool init, bool commitSyscfg)
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr) != enable)
     {
 	
-	MeshInfo("%s: Ethbhaul Commit:%d,Enable:%d",
-			__FUNCTION__,commitSyscfg,enable);
-	if(commitSyscfg) {
-        	meshSetEthbhaulSyscfg(enable);
-	}
+        MeshInfo("%s: Ethbhaul Commit:%d,Enable:%d",
+            __FUNCTION__,commitSyscfg,enable);
+        if(commitSyscfg) {
+            meshSetEthbhaulSyscfg(enable);
+        }
         g_pMeshAgent->PodEthernetBackhaulEnable = enable;
         //Send this as an RFC update to plume manager
         Mesh_sendRFCUpdate("PodEthernetBackhaul.Enable", enable ? "true" : "false", rfc_boolean);
@@ -1813,10 +1814,10 @@ bool Mesh_SetGreAcc(bool enable, bool init, bool commitSyscfg)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_gre_acc_enable") != enable)
     {
-	MeshInfo("%s: GRE Acc Commit:%d,Enable:%d",
-			__FUNCTION__,commitSyscfg,enable);
+        MeshInfo("%s: GRE Acc Commit:%d,Enable:%d",
+        __FUNCTION__,commitSyscfg,enable);
         if (enable && (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) ||
-		Mesh_GetEnabled("mesh_ovs_enable")) )
+            Mesh_GetEnabled("mesh_ovs_enable")) )
         {   // mesh_ovs_enable has higher priority over mesh_gre_acc_enable,
             // therefore when ovs is enabled, disable gre acc.
             MeshWarning("Disabling GreAcc RFC, since OVS is currently enabled!\n");
@@ -1852,8 +1853,8 @@ bool Mesh_SetOVS(bool enable, bool init, bool commitSyscfg)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_ovs_enable") != enable)
     {
-	MeshInfo("%s: OVS Enable Commit:%d,Enable:%d",
-			__FUNCTION__,commitSyscfg,enable);
+        MeshInfo("%s: OVS Enable Commit:%d,Enable:%d",
+            __FUNCTION__,commitSyscfg,enable);
         if (enable)
         {
             if (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
@@ -2019,13 +2020,13 @@ bool Mesh_SetEnabled(bool enable, bool init, bool commitSyscfg)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) != enable)
     {
-        if (!enable && !init)
+        if (!enable)
         {   // if mesh is being disabled, then also disable ovs
             MeshWarning("Disabling OVS and GRE_ACC RFC, since mesh will be disabled!\n");
             Mesh_SetOVS(false, false, true);
-	    if(isXB3Platform) {
-            	Mesh_SetGreAcc(false,false,true);
-		}
+            if(isXB3Platform) {
+                Mesh_SetGreAcc(false,false,true);
+            }
         }
         meshSetSyscfg(enable, commitSyscfg);
  	pthread_t tid;
@@ -2329,8 +2330,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
     {
         rc = strcmp_s("true",strlen("true"),out_val,&ind);
         ERR_CHK(rc);
-        if((ind == 0) && (rc == EOK) &&
-			Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
+        if((ind == 0) && (rc == EOK))
         {
            MeshInfo("Setting initial OVS mode to true\n");
            Mesh_SetOVS(true,true,false);
@@ -2363,7 +2363,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         rc = strcmp_s("true",strlen("true"),out_val,&ind);
         ERR_CHK(rc);
         if((ind == 0) && (rc == EOK) &&
-			Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
+            Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
         {
                MeshInfo("Setting initial gre acc mode to true\n");
                Mesh_SetGreAcc(true,true,false);
