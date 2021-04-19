@@ -52,6 +52,7 @@
 #include "ssp_global.h"
 #include "cosa_webconfig_api.h"
 #include "safec_lib_common.h"
+#include "secure_wrapper.h"
 
 #ifdef MESH_OVSAGENT_ENABLE
 #include "OvsAgentApi.h"
@@ -337,12 +338,12 @@ int Mesh_DnsmasqSock(void)
   FILE *cmd;
   errno_t rc = -1;
   char armIP[32] = {'\0'};;
-  cmd = popen("grep \"ARM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
+  cmd = v_secure_popen("r","grep ARM_INTERFACE_IP /etc/device.properties | cut -d '=' -f2");
   if(cmd == NULL) {
        return 0;
    }
   fgets(armIP, sizeof(armIP), cmd);
-  pclose(cmd);
+  v_secure_pclose(cmd);
   dnsmasqFd = socket(PF_INET, SOCK_DGRAM, 0);
   if( dnsmasqFd < 0)
     return 0;
@@ -631,15 +632,13 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
     break;
     case MESH_ETHERNET_MAC_LIST:
     {
-      char cmd[256] = {0};
       int rc = -1;
       if( g_pMeshAgent->PodEthernetBackhaulEnable)
       {
-       sprintf(cmd,"%s %s", ETHBHAUL_SWITCH, "-eb_enable");
-       rc = system(cmd);
+          rc= v_secure_system( ETHBHAUL_SWITCH " -eb_enable");
        if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
        {
-        MeshError("%s: Ethernet backhaul enable failed = %d\n", cmd, WEXITSTATUS(rc));
+        MeshError("%s -eb_enable : Ethernet backhaul enable failed = %d\n", ETHBHAUL_SWITCH, WEXITSTATUS(rc));
        }
        Mesh_SendEthernetMac(rxMsg.data.ethMac.mac);
       }
@@ -661,7 +660,6 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
 
 static void Mesh_logLinkChange()
 {
-    char cmd[256] = {0};
     int rc = -1;
 
     if ((Mesh_GetEnabled("CaptivePortal_Enable") == true) && (is_configure_wifi_enabled() == true))
@@ -670,45 +668,64 @@ static void Mesh_logLinkChange()
         return;
     }
 
-    if (access(POD_LINK_SCRIPT, F_OK) == 0)
-    {
-        snprintf( cmd, sizeof(cmd), "%s &", POD_LINK_SCRIPT);
-        rc = system(cmd);
+    if (access(POD_LINK_SCRIPT, F_OK) == 0) {        
+        rc= v_secure_system( POD_LINK_SCRIPT " &");
         if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
         {
-            MeshError("%s: pod link script fail rc = %d\n", cmd, WEXITSTATUS(rc));
+            MeshError("%s &: pod link script fail rc = %d\n", POD_LINK_SCRIPT, WEXITSTATUS(rc));
         }
     }
 }
 static void Mesh_EthPodTunnel(PodTunnel *tunnel)
 {
-    char cmd[512] = {0};
     int rc = -1;
     int PodIdx = Mesh_getEthPodIndex(tunnel->podmac);
 
-    memset( cmd, 0, sizeof(cmd));
-    snprintf( cmd, sizeof(cmd),
-            "ip link del ethpod%d; "
+    MeshInfo("ip link del ethpod%d; "
             "ip link add ethpod%d type gretap local %s remote %s dev %s tos 1; "
             "ifconfig ethpod%d up; "
             "brctl addif %s ethpod%d; "
             "vconfig add ethpod%d %d;vconfig add ethpod%d %d; "
             "ifconfig ethpod%d.%d up;ifconfig ethpod%d.%d up; "
-            "brctl addif %s ethpod%d.%d;brctl addif %s ethpod%d.%d", 
-            PodIdx,
+            "brctl addif %s ethpod%d.%d;brctl addif %s ethpod%d.%d; " 
+            "Etheret bhaul Network cmd: $s\n",  PodIdx,
             PodIdx, ETHBHAUL_BR_IP, tunnel->podaddr, tunnel->dev,
             PodIdx,
             MESHBHAUL_BR, PodIdx,
             PodIdx, XHS_VLAN, PodIdx, LNF_VLAN,
             PodIdx, XHS_VLAN, PodIdx, LNF_VLAN,
             XHS_BR, PodIdx, XHS_VLAN, (isPaceXF3 ? LNF_BR_XF3 : LNF_BR), PodIdx, LNF_VLAN
-    );
-    MeshInfo("%s Etheret bhaul Network cmd: $s\n", cmd);
+);
 
-    rc = system(cmd);
+    rc = v_secure_system("ip link del ethpod%d; "
+            "ip link add ethpod%d type gretap local %s remote %s dev %s tos 1; "
+            "ifconfig ethpod%d up; "
+            "brctl addif %s ethpod%d; "
+            "vconfig add ethpod%d %d;vconfig add ethpod%d %d; "
+            "ifconfig ethpod%d.%d up;ifconfig ethpod%d.%d up; "
+            "brctl addif %s ethpod%d.%d;brctl addif %s ethpod%d.%d",
+            PodIdx,
+            PodIdx, ETHBHAUL_BR_IP, tunnel->podaddr, tunnel->dev,
+            PodIdx,
+            MESHBHAUL_BR, PodIdx,
+            PodIdx, XHS_VLAN, PodIdx, LNF_VLAN,
+            PodIdx, XHS_VLAN, PodIdx, LNF_VLAN,
+            XHS_BR, PodIdx, XHS_VLAN, (isPaceXF3 ? LNF_BR_XF3 : LNF_BR), PodIdx, LNF_VLAN);
     if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
     {
-        MeshError("%s: tunnel create script fail rc = %d\n", cmd, WEXITSTATUS(rc));
+        MeshError("ip link del ethpod%d; "
+            "ip link add ethpod%d type gretap local %s remote %s dev %s tos 1; "
+            "ifconfig ethpod%d up; "
+            "brctl addif %s ethpod%d; "
+            "vconfig add ethpod%d %d;vconfig add ethpod%d %d; "
+            "ifconfig ethpod%d.%d up;ifconfig ethpod%d.%d up; "
+            "brctl addif %s ethpod%d.%d;brctl addif %s ethpod%d.%d; " ": tunnel create script fail rc = %d\n", PodIdx,
+            PodIdx, ETHBHAUL_BR_IP, tunnel->podaddr, tunnel->dev,
+            PodIdx,
+            MESHBHAUL_BR, PodIdx,
+            PodIdx, XHS_VLAN, PodIdx, LNF_VLAN,
+            PodIdx, XHS_VLAN, PodIdx, LNF_VLAN,
+            XHS_BR, PodIdx, XHS_VLAN, (isPaceXF3 ? LNF_BR_XF3 : LNF_BR), PodIdx, LNF_VLAN, WEXITSTATUS(rc));
     }
 
     if(!gmssClamped) {
@@ -740,13 +757,13 @@ static void* leaseServer(void *data)
    FILE *cmd = NULL;
    bool gdoNtohl;
 
-   cmd = popen("grep \"ATOM_INTERFACE_IP\" /etc/device.properties | cut -d \"=\" -f2","r");
+   cmd = v_secure_popen("r", "grep ATOM_INTERFACE_IP /etc/device.properties | cut -d '=' -f2");
     if(cmd == NULL) {
        MeshInfo("%s : unable to get the atom IP address",__FUNCTION__);
        return NULL;
     }
    fgets(atomIP, sizeof(atomIP), cmd);
-   pclose(cmd);
+   v_secure_pclose(cmd);
 
    Socket = socket(PF_INET, SOCK_DGRAM, 0);
    /* Coverity Issue Fix - CID:69541 : Negative Returns */
@@ -1627,13 +1644,13 @@ void is_xf3_xb3_platform()
     FILE *cmd;
     char platform[32] = {'\0'};
 
-    cmd = popen("grep \"BOX_TYPE\" /etc/device.properties | cut -d \"=\" -f2","r");
+    cmd = v_secure_popen("r","grep BOX_TYPE /etc/device.properties | cut -d '=' -f2");
     if(cmd == NULL) {
         MeshInfo("Mesh BOX_TYPE fetch failed \n");
         return;
     }
     fgets(platform, sizeof(platform), cmd);
-    pclose(cmd);
+    v_secure_pclose(cmd);
     platform[strlen(platform) -1] = '\0';
     if (strncmp(XF3_PLATFORM,platform, sizeof(XF3_PLATFORM)) == 0) {
         isPaceXF3 = true;
@@ -1915,14 +1932,12 @@ void meshSetSyscfg(bool enable, bool commitSyscfg)
 
 void Mesh_EBCleanup()
 {
-    char cmd[256] = {0};
     int rc = -1;
 
-    sprintf(cmd,"%s %s", ETHBHAUL_SWITCH, "-eb_disable &");
-    rc = system(cmd);
+    rc = v_secure_system(ETHBHAUL_SWITCH " -eb_disable &" );
     if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
     {
-        MeshError("%s: Ethernet backhaul disable failed = %d\n", cmd, WEXITSTATUS(rc));
+        MeshError("%s -eb_disable : Ethernet backhaul disable failed = %d\n", ETHBHAUL_SWITCH, WEXITSTATUS(rc));
     }
     if(gmssClamped) {
         MeshInfo("TCP MSS clamp for XHS is disabled\n");
@@ -2509,14 +2524,15 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
         if(i==5) {
          MeshInfo("All retrial failed for syscfg get , try reading from syscfg.db before applying default\n");
          t2_event_d("SYS_ERROR_SyscfgGet_retry_failed", 1);
-         cmd=popen("grep \"mesh_enable\" /nvram/syscfg.db | cut -d \"=\" -f2","r"); 
+         cmd=v_secure_popen("r", "grep mesh_enable /nvram/syscfg.db | cut -d '=' -f2"); 
          if (cmd==NULL) {
-             cmd=popen("grep \"mesh_enable\" /opt/secure/data/syscfg.db | cut -d \"=\" -f2","r"); 
+             cmd=v_secure_popen("r", "grep mesh_enable /opt/secure/data/syscfg.db | cut -d '=' -f2"); 
              if(cmd==NULL) {
                 MeshInfo("Error opening syscfg.db file, do final attempt for recovery\n");
          	t2_event_d("SYS_ERROR_SYSCFG_Open_failed", 1);
                 Mesh_Recovery();
              }
+        v_secure_pclose(cmd);
         }
         else
         {
@@ -2538,7 +2554,7 @@ static void Mesh_SetDefaults(ANSC_HANDLE hThisObject)
                t2_event_d("SYS_ERROR_ApplyDefaut_MeshStatus", 1);
                Mesh_Recovery();
            }
-           pclose(cmd);
+           v_secure_pclose(cmd);
          }
        }
     } else {
@@ -2809,7 +2825,7 @@ static void Mesh_sendDhcpLeaseSync(void)
     clientSocketsMask |= (1 << MAX_CONNECTED_CLIENTS);
     //copy the dnsmasq.leases file from ARM to Atom and send out SYNC message to use the file
     MeshInfo("Copying dnsmasq.leases file from ARM to Atom for the first time\n");
-    system("/usr/ccsp/wifi/synclease.sh");
+    v_secure_system("/usr/ccsp/wifi/synclease.sh");
 #if 1
 
     // Notify plume
@@ -2920,8 +2936,8 @@ static bool Mesh_Register_sysevent(ANSC_HANDLE hThisObject)
         }
 
         if(status == false) {
-            system("/usr/bin/syseventd");
-                sleep(5);
+            v_secure_system("/usr/bin/syseventd");
+            sleep(5);
         }
     }while((status == false) && (retry++ < max_retries));
 
@@ -4201,9 +4217,9 @@ void Mesh_InitClientList()
     errno_t rc = -1;
 
 #ifdef MESH_DOWNLOADABLE_MODULE
-    FILE *fp = popen("dmcli eRT getv Device.Hosts.Host. > /tmp/client_list.txt; /tmp/plume_dnld/usr/ccsp/mesh/active_host_filter.sh /tmp/client_list.txt", "r");
+    FILE *fp = v_secure_popen("r", "dmcli eRT getv Device.Hosts.Host. > /tmp/client_list.txt; /tmp/plume_dnld/usr/ccsp/mesh/active_host_filter.sh /tmp/client_list.txt");
 #else
-    FILE *fp = popen("dmcli eRT getv Device.Hosts.Host. > /tmp/client_list.txt; /usr/ccsp/mesh/active_host_filter.sh /tmp/client_list.txt", "r");
+    FILE *fp = v_secure_popen("r","dmcli eRT getv Device.Hosts.Host. > /tmp/client_list.txt; /usr/ccsp/mesh/active_host_filter.sh /tmp/client_list.txt");
 #endif
 
     if ( fp != NULL) {
@@ -4226,7 +4242,7 @@ void Mesh_InitClientList()
                     {
                         ERR_CHK(rc);
                         MeshError("MAC Address not added\n");
-                        pclose(fp);
+                        v_secure_pclose(fp);
                         return;
                     }
                     break;
@@ -4239,7 +4255,7 @@ void Mesh_InitClientList()
                     {
                         ERR_CHK(rc);
                         MeshError("MAC hostname not added\n");
-                        pclose(fp);
+                        v_secure_pclose(fp);
                         return;
                     }
                     break;
@@ -4253,7 +4269,7 @@ void Mesh_InitClientList()
             Mesh_UpdateClientTable(iface, mac, host, true);
         }
 
-        pclose(fp);
+        v_secure_pclose(fp);
     }
 }
 

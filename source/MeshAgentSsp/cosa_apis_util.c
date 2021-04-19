@@ -34,6 +34,7 @@
 #include "cosa_apis_util.h"
 #include "meshagent.h"
 #include "ansc_wrapper_base.h"
+#include "secure_wrapper.h"
 
 extern int sysevent_fd_gs;
 extern token_t sysevent_token_gs;
@@ -104,13 +105,10 @@ int Mesh_SyseventSetStr(const char *name, unsigned char *value, int bufsz, bool 
         #define DATA_SIZE 1024
         FILE *fp1;
         char buf[DATA_SIZE] = {0};
-        char cmd1[DATA_SIZE] = {0};
-        char cmd2[DATA_SIZE] = {0};
+        int ret = 0;
 
         // Grab the ATOM RPC IP address
-        sprintf(cmd1, "cat /etc/device.properties | grep ARM_ARPING_IP | cut -f 2 -d\"=\"");
-
-        fp1 = popen(cmd1, "r");
+        fp1 = v_secure_popen("r", "cat /etc/device.properties | grep ARM_ARPING_IP | cut -f 2 -d'='");
         if (fp1 == NULL) {
             MeshDebug("Error opening command pipe! \n");
             return FALSE;
@@ -120,15 +118,14 @@ int Mesh_SyseventSetStr(const char *name, unsigned char *value, int bufsz, bool 
 
         buf[strcspn(buf, "\r\n")] = 0; // Strip off any carriage returns
 
+        v_secure_pclose(fp1);
+
         if (buf[0] != 0 && strlen(buf) > 0) {
             MeshDebug("Reported an ARM IP of %s \n", buf);
-            sprintf(cmd2, "rpcclient %s \"sysevent set %s \'%s\';\"", buf, name, value);
-            system(cmd2);
-        }
-
-        if (pclose(fp1) != 0) {
-            /* Error reported by pclose() */
-            CcspTraceError(("Error closing command pipe! \n"));
+            ret = v_secure_system("rpcclient %s sysevent set %s '%s';", buf, name, value);
+            if(ret != 0) {
+                MeshDebug("Failure in executing command via v_secure_system. ret:[%d] \n", ret);
+            } 
         }
     }
 #endif
@@ -198,13 +195,11 @@ int Mesh_SysCfgSetStr(const char *name, unsigned char *str_value, bool toArm)
         #define DATA_SIZE 1024
         FILE *fp1 = NULL;
         char buf[DATA_SIZE] = {0};
-        char cmd1[DATA_SIZE] = {0};
-        char cmd2[DATA_SIZE] = {0};
+        int ret = 0;
 
         // Grab the ATOM RPC IP address
-        sprintf(cmd1, "cat /etc/device.properties | grep ARM_ARPING_IP | cut -f 2 -d\"=\"");
 
-        fp1 = popen(cmd1, "r");
+        fp1 = v_secure_popen("r", "cat /etc/device.properties | grep ARM_ARPING_IP | cut -f 2 -d'='");
         if (fp1 == NULL) {
             MeshDebug("Error opening command pipe! \n");
             return FALSE;
@@ -214,15 +209,14 @@ int Mesh_SysCfgSetStr(const char *name, unsigned char *str_value, bool toArm)
 
         buf[strcspn(buf, "\r\n")] = 0; // Strip off any carriage returns
 
+        v_secure_pclose(fp1);
+
         if (buf[0] != 0 && strlen(buf) > 0) {
             MeshDebug("Reported an ARM IP of %s \n", buf);
-            sprintf(cmd2, "rpcclient %s \"syscfg set %s \'%s\'; syscfg commit\"", buf, name, str_value);
-            system(cmd2);
-        }
-
-        if (pclose(fp1) != 0) {
-            /* Error reported by pclose() */
-            CcspTraceError(("Error closing command pipe! \n"));
+            ret = v_secure_system("rpcclient %s syscfg set %s '%s'; syscfg commit", buf, name,str_value);
+            if(ret != 0) {
+                MeshDebug("Failure in executing command via v_secure_system. ret:[%d] \n", ret);
+            }
         }
     }
 #endif
@@ -234,10 +228,8 @@ int svcagt_get_service_state (const char *svc_name)
 {
 	int exit_code;
 	bool running;
-	char cmdbuf[128] = {0};
-        /* Coverity Fix CID :62962 DC.STRING_BUFFER  */
-	snprintf (cmdbuf,sizeof(cmdbuf), "%s is-active %s.service", svcagt_systemctl_cmd, svc_name);
-	exit_code = system (cmdbuf);
+
+        exit_code =v_secure_system ("systemctl is-active %s.service", svc_name);
 	if (exit_code == -1) {
 		CcspTraceError(("Error invoking systemctl command, errno: %s\n", strerror(errno)));
 		return -1;
@@ -250,7 +242,6 @@ int svcagt_get_service_state (const char *svc_name)
 int svcagt_set_service_state (const char *svc_name, bool state)
 {
 	int exit_code = 0;
-	char cmdbuf[128] = {0};
 	const char *start_stop_msg = NULL;
 	const char *cmd_option = NULL;
 
@@ -263,13 +254,10 @@ int svcagt_set_service_state (const char *svc_name, bool state)
 	}
 
 	MeshInfo("%s %s\n", start_stop_msg, svc_name);
-        /* Coverity Fix CID:58223 DC.STRING_BUFFER */
-	snprintf (cmdbuf,sizeof(cmdbuf), "%s %s %s.service", 
-		svcagt_systemctl_cmd, cmd_option, svc_name); 
-	exit_code = system (cmdbuf);
+
+	exit_code = v_secure_system ("systemctl %s %s.service", cmd_option, svc_name);
 	if (exit_code != 0)
-		CcspTraceError(("Command %s failed with exit %d, errno %s\n",
-			cmdbuf, exit_code, strerror(errno)));
+		CcspTraceError(("Command systemctl %s %s.service failed with exit %d, errno %s\n", cmd_option, svc_name, exit_code, strerror(errno)));
 	return exit_code;
 }
 

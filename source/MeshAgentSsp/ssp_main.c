@@ -41,6 +41,7 @@
 #include "webconfig_framework.h"
 #include "print_uptime.h"
 #include <sys/sysinfo.h>
+#include "secure_wrapper.h"
 
 /*----------------------------------------------------------------------------*/
 /*                                   Macros                                   */
@@ -172,7 +173,7 @@ int msgBusInit(const char *pComponentName)
     }
 
     check_component_crash("/tmp/meshagent_initialized");
-    system("touch /tmp/meshagent_initialized");
+    v_secure_system("touch /tmp/meshagent_initialized");
     MeshInfo("msgBusInit - /tmp/meshagent_initialized created\n");
     pthread_t tid;
     pthread_create(&tid, NULL, Cosa_print_uptime_meshagent, NULL);
