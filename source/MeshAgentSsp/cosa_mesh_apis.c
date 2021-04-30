@@ -1640,8 +1640,8 @@ void is_xf3_xb3_platform()
     } else if (strncmp(XB3_PLATFORM, platform, sizeof(XB3_PLATFORM)) == 0) {
         isXB3Platform = true;
     }
-    MeshInfo("platform check XF3:%d,XB3:%d\n",
-                    isPaceXF3,isXB3Platform);
+    MeshInfo("platform check XF3:%d, XB3:%d\n",
+                    isPaceXF3, isXB3Platform);
 }
 
 BOOL radio_check()
@@ -1900,13 +1900,12 @@ void Mesh_EBCleanup()
     {
         MeshError("%s: Ethernet backhaul disable failed = %d\n", cmd, WEXITSTATUS(rc));
     }
-     
     if(gmssClamped) {
         MeshInfo("TCP MSS clamp for XHS is disabled\n");
         sysevent_set(sysevent_fd, sysevent_token, "eb_gre", "down", 0);
         sysevent_set(sysevent_fd, sysevent_token, "firewall-restart", NULL, 0);
         gmssClamped = false;
-    } 
+    }
 }
 
 /**
@@ -1919,9 +1918,8 @@ bool Mesh_SetMeshEthBhaul(bool enable, bool init, bool commitSyscfg)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled(meshSyncMsgArr[MESH_RFC_UPDATE].sysStr) != enable)
     {
-	
-        MeshInfo("%s: Ethbhaul Commit:%d,Enable:%d",
-            __FUNCTION__,commitSyscfg,enable);
+        MeshInfo("%s: Ethbhaul Commit:%d, Enable:%d\n",
+            __FUNCTION__, commitSyscfg, enable);
         if(commitSyscfg) {
             meshSetEthbhaulSyscfg(enable);
         }
@@ -1948,8 +1946,8 @@ bool Mesh_SetGreAcc(bool enable, bool init, bool commitSyscfg)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_gre_acc_enable") != enable)
     {
-        MeshInfo("%s: GRE Acc Commit:%d,Enable:%d",
-            __FUNCTION__,commitSyscfg,enable);
+        MeshInfo("%s: GRE Acc Commit:%d, Enable:%d\n",
+            __FUNCTION__, commitSyscfg, enable);
         if (enable && (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr) ||
             Mesh_GetEnabled("mesh_ovs_enable")))
         {   // mesh_ovs_enable has higher priority over mesh_gre_acc_enable,
@@ -1987,8 +1985,8 @@ bool Mesh_SetOVS(bool enable, bool init, bool commitSyscfg)
     // If the enable value is different or this is during setup - make it happen.
     if (init || Mesh_GetEnabled("mesh_ovs_enable") != enable)
     {
-        MeshInfo("%s: OVS Enable Commit:%d,Enable:%d",
-            __FUNCTION__,commitSyscfg,enable);
+        MeshInfo("%s: OVS Enable Commit:%d, Enable:%d, XB3 Platform:%d\n",
+            __FUNCTION__, commitSyscfg, enable, isXB3Platform);
         if (enable && isXB3Platform)
         {
             if (!Mesh_GetEnabled(meshSyncMsgArr[MESH_WIFI_ENABLE].sysStr))
