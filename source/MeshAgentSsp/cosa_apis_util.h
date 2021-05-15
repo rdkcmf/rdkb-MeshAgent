@@ -27,6 +27,12 @@
 #define MESHAGENT_SOURCE_MESHAGENT_MESHUTILS_H_
 #include <stdbool.h>
 
+typedef enum {
+    MESH_STOP = 0,
+    MESH_START,
+    MESH_RESTART
+} eMeshSysCtlState;
+
 int Mesh_SyseventGetInt(const char *name);
 int Mesh_SyseventSetInt(const char *name, int int_value);
 int Mesh_SyseventGetStr(const char *name, unsigned char *out_value, int outbufsz);
@@ -37,6 +43,6 @@ int Mesh_SysCfgGetStr(const char *name, unsigned char *out_value, int outbufsz);
 int Mesh_SysCfgSetStr(const char *name, unsigned char *str_value, bool toArm);
 
 int svcagt_get_service_state (const char *svc_name);
-int svcagt_set_service_state (const char *svc_name, bool state);
+int svcagt_set_service_state (const char *svc_name, eMeshSysCtlState state);
 
 #endif /* MESHAGENT_SOURCE_MESHAGENT_MESHUTILS_H_ */

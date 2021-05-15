@@ -2119,7 +2119,7 @@ void handleMeshEnable(void *Args)
             if ((err = svcagt_get_service_state(meshServiceName)) == 0)
             {
                 // returns "0" on success
-                if ((err = svcagt_set_service_state(meshServiceName, true)) != 0)
+                if ((err = svcagt_set_service_state(meshServiceName, MESH_START)) != 0)
                 {
                     MeshError("meshwifi service failed to run, igonoring the mesh enablement\n");
 		    t2_event_d("WIFI_ERROR_meshwifiservice_failure", 1);
@@ -2134,7 +2134,7 @@ void handleMeshEnable(void *Args)
             if ((err = svcagt_get_service_state(meshServiceName)) == 1)
             {
                 // returns "0" on success
-                if ((err = svcagt_set_service_state(meshServiceName, false)) != 0)
+                if ((err = svcagt_set_service_state(meshServiceName, MESH_STOP)) != 0)
                 {
                     meshSetSyscfg(0, true);
                     error = MB_ERROR_MESH_SERVICE_STOP_FAIL;
@@ -2932,7 +2932,7 @@ static void *Mesh_sysevent_handler(void *data)
                                   if((rc == EOK) && (!ind))
                                   {
                                        MeshInfo("Stopping meshwifi service\n");
-                                       svcagt_set_service_state(meshServiceName, false);
+                                       svcagt_set_service_state(meshServiceName, MESH_STOP);
                                   }
                                   else
                                   {
@@ -2940,10 +2940,28 @@ static void *Mesh_sysevent_handler(void *data)
                                        if((rc == EOK) && (!ind))
                                        {
                                             MeshInfo("Starting meshwifi service\n");
-                                            svcagt_set_service_state(meshServiceName, true);
+                                            svcagt_set_service_state(meshServiceName, MESH_START);
                                        }
                                        else
-                                            MeshWarning("Unsupported option %s \n", val);
+                                       {
+                                            rc = strcmp_s("restart", strlen("restart"), val, &ind);
+                                            if((rc == EOK) && (!ind))
+                                            {
+                                                if ((err = svcagt_get_service_state(meshServiceName)) == 1)
+                                                {
+                                                    MeshInfo("Custom Restarting meshwifi service\n");
+                                                    system("touch /tmp/custom_mesh_restart");
+                                                    svcagt_set_service_state(meshServiceName, MESH_RESTART);
+                                                }
+                                                else
+                                                {
+                                                    MeshInfo("Plume is not running, no custom Restart\n");
+                                                }
+                                            }
+                                            else
+                                                MeshWarning("Unsupported option %s \n", val);
+
+                                       }
                                   }
                                }
                             }

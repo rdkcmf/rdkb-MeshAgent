@@ -244,17 +244,21 @@ int svcagt_get_service_state (const char *svc_name)
 }
 
 // Invoke systemctl to start or stop a service
-int svcagt_set_service_state (const char *svc_name, bool state)
+int svcagt_set_service_state (const char *svc_name, eMeshSysCtlState state)
 {
 	int exit_code = 0;
 	char cmdbuf[128] = {0};
 	const char *start_stop_msg = NULL;
 	const char *cmd_option = NULL;
 
-	if (state) {
+	if (state == MESH_START) {
 		start_stop_msg = "Starting";
 		cmd_option = "start";
-	} else {
+	}else if (state == MESH_RESTART) {
+                start_stop_msg = "Restarting";
+                cmd_option = "restart";
+        } 
+        else {
 		start_stop_msg = "Stopping";
 		cmd_option = "stop";
 	}
