@@ -40,6 +40,7 @@
 #include "safec_lib_common.h"
 #include "webconfig_framework.h"
 #include "print_uptime.h"
+#include <sys/sysinfo.h>
 
 /*----------------------------------------------------------------------------*/
 /*                                   Macros                                   */
@@ -300,6 +301,11 @@ void* Cosa_print_uptime_meshagent( void* arg )
 {
     UNREFERENCED_PARAMETER(arg);
     pthread_detach(pthread_self());
-    print_uptime("boot_to_meshagent_uptime",NULL);
+    struct sysinfo l_sSysInfo;
+    sysinfo(&l_sSysInfo);
+    char uptime[16] = {0};
+    snprintf(uptime, sizeof(uptime), "%ld", l_sSysInfo.uptime);
+    CcspTraceWarning(("print_uptime: Mesh uptime is %s\n",uptime));
+    print_uptime("boot_to_meshagent_uptime",NULL, uptime);
     return NULL;
 }
