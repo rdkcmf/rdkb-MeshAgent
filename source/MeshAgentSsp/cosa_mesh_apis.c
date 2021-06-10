@@ -217,6 +217,8 @@ void Mesh_InitClientList();
 void changeChBandwidth( int, int);
 static void Mesh_ModifyPodTunnel(MeshTunnelSet *conf);
 static void Mesh_ModifyPodTunnelVlan(MeshTunnelSetVlan *conf);
+BOOL is_configure_wifi_enabled();
+
 static char EthPodMacs[MAX_POD_COUNT][MAX_MAC_ADDR_LEN];
 static int eth_mac_count = 0;
 
@@ -659,17 +661,24 @@ void Mesh_ProcessSyncMessage(MeshSync rxMsg)
 
 static void Mesh_logLinkChange()
 {
- char cmd[256] = {0};
- int rc = -1;
+    char cmd[256] = {0};
+    int rc = -1;
 
- if (access(POD_LINK_SCRIPT, F_OK) == 0) {
-      snprintf( cmd, sizeof(cmd), "%s &", POD_LINK_SCRIPT);
-      rc = system(cmd);
-      if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
-      {
-        MeshError("%s: pod link script fail rc = %d\n", cmd, WEXITSTATUS(rc));
-      }
-   }
+    if ((Mesh_GetEnabled("CaptivePortal_Enable") == true) && (is_configure_wifi_enabled() == true))
+    {
+        MeshError("Device in captive portal mode, pod will be non-operational\n");
+        return;
+    }
+
+    if (access(POD_LINK_SCRIPT, F_OK) == 0)
+    {
+        snprintf( cmd, sizeof(cmd), "%s &", POD_LINK_SCRIPT);
+        rc = system(cmd);
+        if (!WIFEXITED(rc) || WEXITSTATUS(rc) != 0)
+        {
+            MeshError("%s: pod link script fail rc = %d\n", cmd, WEXITSTATUS(rc));
+        }
+    }
 }
 static void Mesh_EthPodTunnel(PodTunnel *tunnel)
 {
@@ -1408,6 +1417,49 @@ BOOL set_wifi_boolean_enable(char *parameterName, char *parameterValue) {
         return FALSE;
     }
     return TRUE;
+}
+
+BOOL is_configure_wifi_enabled()
+{
+    int ret = ANSC_STATUS_FAILURE;
+    parameterValStruct_t    **valStructs = NULL;
+    char dstComponent[64]="eRT.com.cisco.spvtg.ccsp.pam";
+    char dstPath[64]="/com/cisco/spvtg/ccsp/pam";
+    char *paramNames[]={"Device.DeviceInfo.X_RDKCENTRAL-COM_ConfigureWiFi"};
+    int  valNum = 0;
+    errno_t rc = -1;
+    int ind = -1;
+
+    ret = CcspBaseIf_getParameterValues(
+            bus_handle,
+            dstComponent,
+            dstPath,
+            paramNames,
+            1,
+            &valNum,
+            &valStructs);
+
+    if (CCSP_Message_Bus_OK != ret)
+    {
+         CcspTraceError(("%s CcspBaseIf_getParameterValues %s error %d\n", __FUNCTION__,paramNames[0],ret));
+         free_parameterValStruct_t(bus_handle, valNum, valStructs);
+         return FALSE;
+    }
+
+    MeshWarning("valStructs[0]->parameterValue = %s\n",valStructs[0]->parameterValue);
+
+    rc = strcmp_s("true",strlen("true"),valStructs[0]->parameterValue,&ind);
+    ERR_CHK(rc);
+    if ((ind == 0) && (rc == EOK))
+    {
+        free_parameterValStruct_t(bus_handle, valNum, valStructs);
+        return TRUE;
+    }
+    else
+    {
+        free_parameterValStruct_t(bus_handle, valNum, valStructs);
+        return FALSE;
+    }
 }
 
 BOOL is_band_steering_enabled()
